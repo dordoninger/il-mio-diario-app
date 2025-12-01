@@ -3,68 +3,89 @@ import pymongo
 from datetime import datetime
 from streamlit_quill import st_quill
 import time
-import uuid # Ci serve per generare chiavi univoche e "resettare" l'editor
+import uuid
 
 # --- 1. CONFIGURAZIONE ---
 st.set_page_config(page_title="DBJ Notes", page_icon="📝", layout="wide")
 
-# --- 2. CSS & DESIGN PULITO ---
+# --- 2. CSS AVANZATO (Fix Rosso + Dimensioni) ---
 st.markdown("""
 <style>
-    /* Input e Textarea: Bordo nero/grigio scuro quando attivi */
+    /* FIX BORDI ROSSI: Forza il colore grigio scuro/nero al focus */
     .stTextInput > div > div > input:focus {
         border-color: #333 !important;
         box-shadow: 0 0 0 1px #333 !important;
     }
-    
-    /* Titolo Minimal Black */
+    .stTextArea > div > div > textarea:focus {
+        border-color: #333 !important;
+        box-shadow: 0 0 0 1px #333 !important;
+    }
+    /* Rimuove bordo rosso anche dal box di ricerca se presente */
+    [data-testid="stHeader"] {
+        background-color: rgba(0,0,0,0);
+    }
+
+    /* TITOLO APP RIDIMENSIONATO */
     .minimal-title {
-        font-family: 'Arial', sans-serif; /* Font semplice e pulito */
-        font-weight: 900;
-        font-size: 4rem;
-        color: #000000; /* Nero assoluto */
+        font-family: 'Helvetica', sans-serif;
+        font-weight: 800;
+        font-size: 2.5rem; /* Molto più piccolo di prima */
+        color: #1a1a1a;
         text-align: center;
-        letter-spacing: -2px; /* Lettere vicine per look moderno */
-        margin-bottom: 10px;
-        margin-top: -20px;
+        margin-bottom: 5px;
+        margin-top: -10px;
     }
 
-    /* Card della Nota */
-    .note-card {
-        border: 1px solid #e0e0e0;
-        border-radius: 12px;
-        padding: 15px;
-        background: white;
-        box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+    /* Override dimensioni titoli di Streamlit (H2, H3) */
+    h1, h2, h3 {
+        font-family: 'Helvetica', sans-serif !important;
+        font-weight: 600 !important;
+    }
+    h3 {
+        font-size: 1.1rem !important; /* Titoli note più piccoli */
+    }
+    
+    /* Stile per il bottone che sembra un titolo (Click to Edit) */
+    .stButton button {
+        border: none;
+        background: transparent;
+        color: #000;
+        text-align: left;
+        font-weight: bold;
+        font-size: 18px;
+        padding: 0;
+    }
+    .stButton button:hover {
+        color: #4A90E2; /* Diventa blu quando ci passi sopra */
+        background: transparent;
+        border: none;
     }
 
-    /* Animazione Pulsazione (senza stelline) */
+    /* Animazione Logo */
     @keyframes pulse-logo {
-        0% { transform: scale(1); opacity: 0.5; }
-        50% { transform: scale(1.1); opacity: 1; }
-        100% { transform: scale(1); opacity: 0.5; }
+        0% { transform: scale(1); opacity: 0.6; }
+        50% { transform: scale(1.05); opacity: 1; }
+        100% { transform: scale(1); opacity: 0.6; }
     }
     .splash-logo {
-        font-size: 80px;
+        font-size: 60px;
         text-align: center;
         animation: pulse-logo 1.2s infinite;
-        margin-top: 15vh;
+        margin-top: 20vh;
     }
 </style>
 """, unsafe_allow_html=True)
 
-# --- 3. ANIMAZIONE INIZIALE (1.2 sec, niente stelline) ---
+# --- 3. GESTIONE STATO ---
 if 'first_load' not in st.session_state:
     placeholder = st.empty()
     with placeholder.container():
         st.markdown("<div class='splash-logo'>📝</div>", unsafe_allow_html=True)
-        st.markdown("<h1 style='text-align: center; color: black;'>DBJ Notes</h1>", unsafe_allow_html=True)
+        st.markdown("<h1 style='text-align: center; font-size: 2rem;'>DBJ Notes</h1>", unsafe_allow_html=True)
         time.sleep(1.2)
     placeholder.empty()
     st.session_state['first_load'] = True
 
-# --- 4. GESTIONE STATO PER RESET EDITOR ---
-# Questo serve per svuotare "veramente" l'editor dopo il salvataggio
 if 'editor_key' not in st.session_state:
     st.session_state.editor_key = str(uuid.uuid4())
 
@@ -84,16 +105,9 @@ collection = db.note
 # --- TOOLBAR EDITOR ---
 toolbar_full = [
     ['bold', 'italic', 'underline', 'strike'],
-    ['blockquote', 'code-block'],
-    [{ 'header': 1 }, { 'header': 2 }],
+    [{ 'header': [1, 2, 3, False] }],
     [{ 'list': 'ordered'}, { 'list': 'bullet' }],
-    [{ 'script': 'sub'}, { 'script': 'super' }],
-    [{ 'indent': '-1'}, { 'indent': '+1' }],
-    [{ 'direction': 'rtl' }],
-    [{ 'size': ['small', False, 'large', 'huge'] }],
-    [{ 'header': [1, 2, 3, 4, 5, 6, False] }],
     [{ 'color': [] }, { 'background': [] }],
-    [{ 'font': [] }],
     [{ 'align': [] }],
     ['link', 'image', 'formula'],
     ['clean']
@@ -101,134 +115,118 @@ toolbar_full = [
 
 # --- DIALOGHI (POPUP) ---
 
-# 1. Popup Modifica
-@st.dialog("Modifica Nota")
+# 1. Popup Modifica (Occupa spazio come richiesto)
+@st.dialog("Modifica Nota", width="large")
 def apri_popup_modifica(nota_id, titolo_vecchio, contenuto_vecchio):
+    st.markdown("### Modifica contenuto")
     nuovo_titolo = st.text_input("Titolo", value=titolo_vecchio)
+    # Editor grande
     nuovo_contenuto = st_quill(value=contenuto_vecchio, toolbar=toolbar_full, html=True, key=f"edit_{nota_id}")
     
-    if st.button("💾 Salva Modifiche"):
+    col_save, col_del = st.columns([4, 1])
+    if col_save.button("💾 Salva Modifiche", type="primary"):
         collection.update_one(
             {"_id": nota_id},
             {"$set": {"titolo": nuovo_titolo, "contenuto": nuovo_contenuto, "data": datetime.now()}}
         )
         st.rerun()
+    
+    # Possibilità di eliminare direttamente dalla modifica
+    if col_del.button("🗑️ Elimina"):
+         collection.update_one({"_id": nota_id}, {"$set": {"deleted": True}})
+         st.rerun()
 
-# 2. Popup Conferma Eliminazione (Sposta nel Cestino)
-@st.dialog("⚠️ Attenzione")
-def conferma_eliminazione(nota_id):
-    st.write("Vuoi davvero eliminare questa nota? Finirà nel cestino.")
-    col_si, col_no = st.columns(2)
-    if col_si.button("Sì, elimina", type="primary"):
-        # Soft Delete: non cancelliamo, ma mettiamo un flag "deleted": True
-        collection.update_one({"_id": nota_id}, {"$set": {"deleted": True}})
-        st.rerun()
-    if col_no.button("No, annulla"):
-        st.rerun()
-
-# --- INTERFACCIA ---
-
-# Titolo Nero Minimal
-st.markdown("<div class='minimal-title'>DBJ Notes</div>", unsafe_allow_html=True)
-st.divider()
-
-# --- SEZIONE CREAZIONE (Auto-svuotante) ---
-st.subheader("Nuova Nota")
-
-with st.container(border=True):
-    # Usiamo st.session_state.editor_key come chiave. 
-    # Quando salviamo, cambiamo questa chiave e l'editor rinasce vuoto.
-    titolo_input = st.text_input("Titolo Nota", key=f"tit_{st.session_state.editor_key}")
-    contenuto_input = st_quill(
-        placeholder="Scrivi qui...",
-        html=True,
-        toolbar=toolbar_full,
-        key=f"quill_{st.session_state.editor_key}"
-    )
-
-    if st.button("Salva Nota 💾"):
-        if titolo_input and contenuto_input:
-            doc = {
-                "titolo": titolo_input,
-                "contenuto": contenuto_input,
-                "data": datetime.now(),
-                "tipo": "testo_ricco",
-                "deleted": False # Importante per il cestino
-            }
-            collection.insert_one(doc)
-            st.toast("Nota Salvata!", icon="✅")
-            
-            # IL TRUCCO DEL RESET: Generiamo una nuova chiave univoca
-            st.session_state.editor_key = str(uuid.uuid4())
-            time.sleep(0.5)
+# 2. Popup Cestino (Funziona come una cartella separata)
+@st.dialog("Cestino 🗑️", width="large")
+def apri_cestino():
+    note_cestino = list(collection.find({"deleted": True}).sort("data", -1))
+    
+    col_head1, col_head2 = st.columns([3, 1])
+    col_head1.write(f"Note nel cestino: {len(note_cestino)}")
+    
+    if note_cestino:
+        if col_head2.button("🔥 Svuota tutto"):
+            collection.delete_many({"deleted": True})
             st.rerun()
-        else:
-            st.warning("Scrivi titolo e contenuto per salvare.")
+        
+        st.divider()
+        for nota in note_cestino:
+            c1, c2, c3 = st.columns([4, 1, 1])
+            c1.markdown(f"**{nota['titolo']}**")
+            if c2.button("♻️", key=f"rest_{nota['_id']}", help="Ripristina"):
+                collection.update_one({"_id": nota['_id']}, {"$set": {"deleted": False}})
+                st.rerun()
+            if c3.button("❌", key=f"kill_{nota['_id']}", help="Elimina per sempre"):
+                collection.delete_one({"_id": nota['_id']})
+                st.rerun()
+    else:
+        st.info("Il cestino è vuoto.")
+
+# --- INTERFACCIA PRINCIPALE ---
+
+st.markdown("<div class='minimal-title'>DBJ Notes</div>", unsafe_allow_html=True)
+
+# --- BARRA SUPERIORE: CREA (Tendina) + CESTINO (Bottone) ---
+col_crea, col_trash = st.columns([20, 1]) # Proporzione: Crea occupa quasi tutto, Cestino piccolo a destra
+
+with col_crea:
+    with st.expander("✍️ Crea nuova nota"):
+        # Chiave dinamica per svuotare l'input
+        titolo_input = st.text_input("Titolo", key=f"tit_{st.session_state.editor_key}")
+        contenuto_input = st_quill(
+            placeholder="Scrivi qui...",
+            html=True,
+            toolbar=toolbar_full,
+            key=f"quill_{st.session_state.editor_key}"
+        )
+        if st.button("Salva Nota 💾"):
+            if titolo_input and contenuto_input:
+                collection.insert_one({
+                    "titolo": titolo_input,
+                    "contenuto": contenuto_input,
+                    "data": datetime.now(),
+                    "tipo": "testo_ricco",
+                    "deleted": False
+                })
+                st.toast("Salvata!", icon="✅")
+                st.session_state.editor_key = str(uuid.uuid4()) # Reset
+                time.sleep(0.5)
+                st.rerun()
+            else:
+                st.warning("Manca titolo o testo.")
+
+with col_trash:
+    # Il bottone cestino è allineato a destra
+    st.write("") # Spaziatore per allineare verticalmente
+    if st.button("🗑️", help="Apri Cestino"):
+        apri_cestino()
 
 st.divider()
 
-# --- SEZIONE VISUALIZZAZIONE (Solo note NON cancellate) ---
-c_search, _ = st.columns([2, 1])
-query = c_search.text_input("🔍 Cerca...", placeholder="Cerca...")
+# --- RICERCA ---
+query = st.text_input("🔍 Cerca...", placeholder="Cerca parole chiave...", label_visibility="collapsed")
 
-# Filtro base: note che NON hanno deleted=True
+# --- GRIGLIA NOTE ---
 filtro = {"deleted": {"$ne": True}}
-
 if query:
-    # Aggiunge la ricerca al filtro base
-    filtro = {
-        "$and": [
-            {"deleted": {"$ne": True}},
-            {"$or": [{"titolo": {"$regex": query, "$options": "i"}}, {"contenuto": {"$regex": query, "$options": "i"}}]}
-        ]
-    }
+    filtro = {"$and": [{"deleted": {"$ne": True}}, {"$or": [{"titolo": {"$regex": query, "$options": "i"}}, {"contenuto": {"$regex": query, "$options": "i"}}]}]}
 
 note_attive = list(collection.find(filtro).sort("data", -1))
 
 if not note_attive:
-    st.info("Nessuna nota presente.")
+    st.info("Nessuna nota. Creane una sopra!")
 else:
     cols = st.columns(3)
     for index, nota in enumerate(note_attive):
         with cols[index % 3]:
             with st.container(border=True):
-                st.markdown(f"### {nota['titolo']}")
-                st.markdown(nota['contenuto'], unsafe_allow_html=True)
-                st.write("---")
-                b1, b2 = st.columns(2)
-                
-                if b1.button("✏️ Modifica", key=f"ed_btn_{nota['_id']}"):
+                # TRUCCO: Usiamo un bottone che sembra un titolo per aprire la modifica
+                # use_container_width=True rende il bottone largo quanto la card
+                if st.button(f"📝 {nota['titolo']}", key=f"open_{nota['_id']}", use_container_width=True):
                     apri_popup_modifica(nota['_id'], nota['titolo'], nota['contenuto'])
                 
-                # Apre il popup di conferma invece di cancellare subito
-                if b2.button("🗑️ Elimina", key=f"del_btn_{nota['_id']}"):
-                    conferma_eliminazione(nota['_id'])
-
-# --- CESTINO (Espandibile in fondo) ---
-st.write("")
-st.write("")
-with st.expander("🗑️ Cestino (Note eliminate)"):
-    # Recuperiamo solo le note con deleted=True
-    note_cestino = list(collection.find({"deleted": True}).sort("data", -1))
-    
-    if not note_cestino:
-        st.write("Il cestino è vuoto.")
-    else:
-        if st.button("🔥 Svuota Cestino Definitivamente", type="primary"):
-            collection.delete_many({"deleted": True})
-            st.rerun()
-            
-        st.write(f"Ci sono {len(note_cestino)} note nel cestino.")
-        for nota in note_cestino:
-            c1, c2, c3 = st.columns([4, 1, 1])
-            c1.write(f"📄 **{nota['titolo']}**")
-            
-            # Tasto Ripristina
-            if c2.button("♻️", key=f"rest_{nota['_id']}", help="Ripristina"):
-                collection.update_one({"_id": nota['_id']}, {"$set": {"deleted": False}})
-                st.rerun()
+                # Anteprima contenuto (piccola)
+                st.markdown(nota['contenuto'][:100] + "..." if len(nota['contenuto']) > 100 else nota['contenuto'], unsafe_allow_html=True)
                 
-            # Tasto Elimina per sempre (singolo)
-            if c3.button("❌", key=f"perm_del_{nota['_id']}", help="Elimina per sempre"):
-                collection.delete_one({"_id": nota['_id']})
-                st.rerun()
+                # Data piccola in basso
+                st.caption(nota['data'].strftime("%d/%m %H:%M"))

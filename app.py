@@ -1,83 +1,104 @@
 import streamlit as st
 import pymongo
 from datetime import datetime
+from streamlit_quill import st_quill
 
 # --- CONFIGURAZIONE PAGINA ---
 st.set_page_config(page_title="Il mio Diario", page_icon="📔", layout="centered")
 
-# --- CONNESSIONE AL DATABASE (MONGODB) ---
-# Questa funzione serve a collegarsi senza rallentare l'app ogni volta
+# --- CSS PERSONALIZZATO (Per rendere l'app più carina) ---
+st.markdown("""
+<style>
+    .stButton>button {
+        width: 100%;
+        background-color: #FF4B4B;
+        color: white;
+    }
+    .nota-box {
+        border: 1px solid #ddd;
+        padding: 15px;
+        border-radius: 10px;
+        margin-bottom: 10px;
+    }
+</style>
+""", unsafe_allow_html=True)
+
+# --- CONNESSIONE AL DATABASE ---
 @st.cache_resource
 def init_connection():
     try:
-        # Legge la stringa che hai messo nei "Secrets" di Streamlit
         return pymongo.MongoClient(st.secrets["mongo"]["connection_string"])
     except Exception as e:
-        st.error(f"Errore di connessione al Database: {e}")
+        st.error(f"Errore DB: {e}")
         return None
 
 client = init_connection()
-
-# Se la connessione fallisce, fermiamo tutto
-if client is None:
-    st.stop()
-
-# Definiamo il "Cassetto" (Database) e la "Cartella" (Collection) dove salvare le note
+if client is None: st.stop()
 db = client.diario_db
 collection = db.note
 
-# --- INTERFACCIA UTENTE ---
-st.title("📔 Il mio Diario Personale")
+# --- INTERFACCIA ---
+st.title("📔 Il mio Diario 2.0")
 
-# --- AREA CREAZIONE NUOVA NOTA ---
-with st.expander("✍️ Crea una nuova nota", expanded=False):
-    with st.form("nuova_nota_form"):
-        titolo = st.text_input("Titolo della nota")
-        # Area di testo semplice per ora
-        contenuto = st.text_area("Scrivi qui i tuoi pensieri...", height=150)
-        
-        # Tasto per salvare
-        submitted = st.form_submit_button("Salva Nota")
-        
-        if submitted and titolo and contenuto:
-            # Creiamo il pacchetto dati da spedire a MongoDB
-            documento_nota = {
-                "tipo": "testo",  # Prepariamoci per il futuro (disegni, audio, etc.)
+# --- AREA CREAZIONE (Ora con Editor Ricco) ---
+with st.expander("✍️ Crea una nuova nota", expanded=True):
+    titolo = st.text_input("Titolo")
+    
+    st.write("Scrivi qui sotto (usa la barra per grassetto, elenchi, ecc):")
+    # Qui usiamo l'editor Quill invece della text_area
+    # html=True permette di salvare la formattazione
+    contenuto = st_quill(placeholder="Caro diario...", html=True, key="quill_editor")
+    
+    # Il bottone è fuori dal form perché Quill gestisce i dati in modo speciale
+    if st.button("Salva Nota"):
+        if titolo and contenuto:
+            doc = {
+                "tipo": "testo_ricco",
                 "titolo": titolo,
-                "contenuto": contenuto,
+                "contenuto": contenuto, # Qui salviamo il codice HTML (con grassetti e colori)
                 "data": datetime.now(),
                 "preferito": False
             }
-            # Inviamo al database
-            collection.insert_one(documento_nota)
-            st.success("Nota salvata con successo!")
-            # Ricarichiamo la pagina per vedere la nuova nota
+            collection.insert_one(doc)
+            st.success("Nota salvata!")
+            import time
+            time.sleep(1) # Aspetta un attimo per farti leggere il messaggio
             st.rerun()
+        else:
+            st.warning("Devi inserire almeno un titolo e del testo.")
 
-st.divider() # Una linea divisoria
+st.divider()
 
-# --- AREA VISUALIZZAZIONE NOTE ---
-st.subheader("Le tue Note")
+# --- FILTRI E RICERCA (Bonus richiesto da te!) ---
+col_ricerca, col_filtro = st.columns([3, 1])
+with col_ricerca:
+    search_query = st.text_input("🔍 Cerca nelle note...")
 
-# Recuperiamo tutte le note dal database, dalla più recente alla più vecchia
-note_salvate = list(collection.find().sort("data", -1))
+# Logica di ricerca
+filtro_db = {}
+if search_query:
+    # Cerca nel titolo O nel contenuto (case insensitive)
+    filtro_db = {
+        "$or": [
+            {"titolo": {"$regex": search_query, "$options": "i"}},
+            {"contenuto": {"$regex": search_query, "$options": "i"}}
+        ]
+    }
 
-if len(note_salvate) == 0:
-    st.info("Non hai ancora scritto nulla. Crea la tua prima nota sopra!")
-else:
-    # Mostriamo le note
-    for nota in note_salvate:
-        # Formattiamo la data in modo leggibile (es. 12/03/2025 10:30)
-        data_fmt = nota["data"].strftime("%d/%m/%Y %H:%M")
-        icona = "📄"
+# Recupero note
+note = list(collection.find(filtro_db).sort("data", -1))
+
+st.subheader(f"Le tue Note ({len(note)})")
+
+for nota in note:
+    data_fmt = nota["data"].strftime("%d/%m/%Y %H:%M")
+    
+    with st.expander(f"📄 {nota['titolo']} ({data_fmt})"):
+        # Qui usiamo markdown con unsafe_allow_html per mostrare grassetti e colori
+        st.markdown(nota['contenuto'], unsafe_allow_html=True)
         
-        # Usiamo un "expander" per ogni nota (si apre cliccandoci)
-        with st.expander(f"{icona} {nota['titolo']} - {data_fmt}"):
-            st.write(nota['contenuto'])
-            
-            # Tasto per cancellare la nota (opzionale ma utile)
-            col1, col2 = st.columns([1, 5])
-            with col1:
-                if st.button("Elimina", key=str(nota["_id"])):
-                    collection.delete_one({"_id": nota["_id"]})
-                    st.rerun()
+        st.write("---")
+        col_del, col_space = st.columns([1, 4])
+        if col_del.button("Elimina 🗑️", key=str(nota["_id"])):
+            collection.delete_one({"_id": nota["_id"]})
+            st.rerun()

@@ -216,6 +216,11 @@ def hex_to_rgba(hex_color, opacity):
     hex_color = hex_color.lstrip('#')
     return f"rgba({int(hex_color[0:2], 16)}, {int(hex_color[2:4], 16)}, {int(hex_color[4:6], 16)}, {opacity})"
 
+def check_for_links(text):
+    """Returns True if text contains http or www"""
+    if not text: return False
+    return bool(re.search(r'(http|www)', text))
+
 # --- 6. TOOLBAR & FORM LOGIC ---
 toolbar_config = [
     ['bold', 'italic', 'underline', 'strike'],
@@ -313,12 +318,9 @@ def render_create_note_form(key_suffix, date_ref=None):
     else:
         title = st.text_input("Title (Optional)", key=f"dt_{key_suffix}")
         labels = st.text_input("Labels", key=f"dl_{key_suffix}")
-        
-        # SLIDERS FOR CANVAS SIZE
         c_w, c_h = st.columns(2)
         cw = c_w.slider("Width (px)", 200, 1000, 600, key=f"cw_{key_suffix}")
         ch = c_h.slider("Height (px)", 200, 1000, 400, key=f"ch_{key_suffix}")
-        
         c1, c2, c3 = st.columns([1, 2, 1])
         with c1:
             st.markdown("<b>Set colour</b>", unsafe_allow_html=True)
@@ -327,16 +329,13 @@ def render_create_note_form(key_suffix, date_ref=None):
             tl = st.radio("Tool", ["Pen", "Pencil", "Highlighter", "Eraser"], horizontal=True, key=f"tt_{key_suffix}")
         with c3:
             sw = st.slider("Width", 1, 30, 2, key=f"ss_{key_suffix}")
-            
         if tl == "Eraser": bc = "#ffffff"
         fc = bc
         if tl == "Pencil": fc = hex_to_rgba(bc, 0.7); sw = 2 if sw > 5 else sw
         elif tl == "Highlighter": fc = hex_to_rgba(bc, 0.4); sw = 15 if sw < 10 else sw
         elif tl == "Eraser": sw = 20 if sw < 10 else sw
-        
         ckey = f"cv_{cw}_{ch}_{key_suffix}"
         res = st_canvas(fill_color="rgba(0,0,0,0)", stroke_width=sw, stroke_color=fc, background_color="#FFF", update_streamlit=True, height=ch, width=cw, drawing_mode="freedraw", key=ckey)
-        
         if st.button("Save Drawing", key=f"bs_{key_suffix}"):
             if logic_save_note(title, labels, None, None, "Drawing", res, date_ref, recur_val, stop_year_val):
                 st.toast("Saved!", icon="✅")
@@ -368,7 +367,6 @@ def open_settings():
     json_data = convert_notes_to_json(all_notes)
     st.download_button("Download Backup (.json)", data=json_data, file_name=f"backup_{datetime.now().strftime('%Y%m%d')}.json", mime="application/json")
     st.write("**Maintenance**")
-    # AUTO-CLEAN DEFAULT ON
     is_auto = st.toggle("Auto-delete items older than 30 days", value=st.session_state.auto_clean_enabled)
     if is_auto != st.session_state.auto_clean_enabled:
         st.session_state.auto_clean_enabled = is_auto
@@ -414,7 +412,6 @@ def open_edit_popup(note_id, old_title, old_content, old_filename, old_labels, n
             elif tool == "Eraser": stroke_width = 20 if stroke_width < 10 else stroke_width
             
             init_draw = json.loads(drawing_data) if drawing_data else None
-            # FIXED CANVAS SIZE FOR EDITING
             canvas_result = st_canvas(fill_color="rgba(0,0,0,0)", stroke_width=stroke_width, stroke_color=final_color, background_color="#FFFFFF", initial_drawing=init_draw, update_streamlit=True, height=450, drawing_mode="freedraw", key=f"canvas_edit_{note_id}")
         else:
             unique_key = f"quill_edit_{note_id}_{st.session_state.edit_trigger}"
@@ -446,7 +443,7 @@ def open_edit_popup(note_id, old_title, old_content, old_filename, old_labels, n
             
             collection.update_one({"_id": note_id}, {"$set": update_data})
             st.session_state.edit_trigger += 1 
-            st.session_state.cal_edit_id = None # Close inline logic if present
+            st.session_state.cal_edit_id = None
             st.rerun()
 
     if old_filename and note_type != "disegno":
@@ -691,11 +688,9 @@ with tab_cal:
     for day in range(1, num_days + 1):
         date_str = f"{st.session_state.cal_year}-{st.session_state.cal_month:02d}-{day:02d}"
         dt = date(st.session_state.cal_year, st.session_state.cal_month, day)
-        day_name = dt.strftime("%A")[:3]
+        day_name = dt.strftime("%A") # Full Day Name
         
         # --- DEFAULT TASK NOTE CHECK ---
-        # If today has NO notes, or no "Compiti del giorno" note, create it.
-        # Check locally first to avoid useless DB writes
         has_default = False
         if date_str in notes_by_day:
             for n in notes_by_day[date_str]:
@@ -704,24 +699,22 @@ with tab_cal:
                     break
         
         if not has_default:
-            # Create Default Note
             def_doc = {
                 "titolo": "Compiti del giorno",
                 "contenuto": "",
                 "labels": [],
                 "data": datetime.now(),
-                "custom_order": -1, # Always top
+                "custom_order": -1,
                 "tipo": "testo_ricco",
                 "deleted": False, "pinned": False,
                 "calendar_date": date_str,
                 "is_default": True
             }
             collection.insert_one(def_doc)
-            # Add to local list manually so we see it immediately without rerun
             if date_str not in notes_by_day: notes_by_day[date_str] = []
             notes_by_day[date_str].insert(0, def_doc)
 
-        st.markdown(f"#### {day:02d} {day_name}", unsafe_allow_html=True)
+        st.markdown(f"#### {day:02d} {day_name} {dt.strftime('%B')}", unsafe_allow_html=True) # 01 Monday September
         
         # SORT NOTES (Default first)
         notes_today = notes_by_day.get(date_str, [])
@@ -734,7 +727,14 @@ with tab_cal:
                     
                     title_txt = note.get('titolo') if note.get('titolo') else ""
                     icon_art = "🎨 " if note.get('tipo') == "disegno" else ""
-                    st.markdown(f"**{icon_art}{title_txt}**")
+                    
+                    # ICONS IN TITLE
+                    extra_icons = ""
+                    if note.get("labels"): extra_icons += "🏷️ "
+                    if note.get("file_name"): extra_icons += "🖇️ "
+                    if check_for_links(note.get("contenuto")): extra_icons += "🔗 "
+                    
+                    st.markdown(f"**{extra_icons}{icon_art}{title_txt}**")
                     
                     if note.get("labels"): st.markdown(render_badges(note["labels"]), unsafe_allow_html=True)
                     if note.get("recurrence") == "yearly": st.caption("🔄 Annual")
@@ -749,19 +749,18 @@ with tab_cal:
                         st.download_button("Download", data=note["file_data"], file_name=note["file_name"], key=f"dlc_{note['_id']}")
                     
                     c1, c2 = st.columns(2)
-                    if c1.button("Edit", key=f"ce_{note['_id']}"):
+                    if c1.button("✎ Edit", key=f"ced_{note['_id']}"):
                         draw_data = note.get("drawing_json", None)
                         open_edit_popup(note['_id'], note['titolo'], note['contenuto'], note.get("file_name"), note.get("labels", []), note.get("tipo"), draw_data, date_ref=date_str)
                     
-                    # DELETE ONLY IF NOT DEFAULT
                     if not note.get('is_default'):
-                        if c2.button("Delete", key=f"cd_{note['_id']}"):
+                        if c2.button("🗑 Delete", key=f"cdel_{note['_id']}"):
                             confirm_deletion(note['_id'])
                     
                     st.markdown("</div>", unsafe_allow_html=True)
         
         # Quick Add Button
-        c_add, c_empty = st.columns([1, 4]) # Smaller button visual
+        c_add, c_empty = st.columns([1, 4])
         if st.session_state.cal_create_date == date_str:
             with st.container():
                 st.markdown(f"**New Note for {day:02d}**")

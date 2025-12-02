@@ -15,7 +15,7 @@ st.set_page_config(page_title="DOR NOTES", page_icon="📄", layout="wide")
 if 'text_size' not in st.session_state: st.session_state.text_size = "16px"
 if 'edit_trigger' not in st.session_state: st.session_state.edit_trigger = 0
 
-# CONTATORE PER IL TRUCCO "CHIUSURA FORZATA"
+# CONTATORE PER IL TRUCCO "CHIUSURA FORZATA TENDINA"
 if 'reset_counter' not in st.session_state: st.session_state.reset_counter = 0
 
 # Chiave per svuotare l'editor
@@ -149,6 +149,57 @@ def sanitize_links(html_content):
     replacement = r'<a href="\1" target="_blank" style="color: #1E90FF !important; text-decoration: underline !important; cursor: pointer;" rel="noopener noreferrer"'
     return re.sub(pattern, replacement, html_content)
 
+# FUNZIONE CHIRURGICA PER PULIRE FORMULE ANNIDATE
+# Risolve il problema del testo residuo "x2+2" eliminando l'intero blocco HTML
+def clean_formulas_robust(text):
+    if not text: return ""
+    
+    while True:
+        # Cerca l'inizio di una formula
+        start_marker = '<span class="ql-formula"'
+        start_idx = text.find(start_marker)
+        if start_idx == -1:
+            break # Nessuna altra formula trovata
+        
+        # Trova la fine del tag di apertura per estrarre il data-value
+        end_open_tag = text.find('>', start_idx)
+        if end_open_tag == -1: break 
+        
+        # Estrai il valore LaTeX
+        open_tag_content = text[start_idx:end_open_tag]
+        match = re.search(r'data-value="([^"]+)"', open_tag_content)
+        formula_latex = match.group(1) if match else "Formula"
+        
+        # ORA IL PASSO CRUCIALE: Trovare il tag di chiusura corrispondente (</span>)
+        # gestendo gli annidamenti interni che confondevano la Regex.
+        balance = 1
+        current_idx = end_open_tag + 1
+        
+        while balance > 0 and current_idx < len(text):
+            next_open = text.find('<span', current_idx)
+            next_close = text.find('</span>', current_idx)
+            
+            if next_close == -1: 
+                # HTML rotto, usciamo per sicurezza
+                balance = 0
+                current_idx = len(text)
+                break
+            
+            # Se troviamo un'apertura prima della chiusura, aumentiamo il livello di annidamento
+            if next_open != -1 and next_open < next_close:
+                balance += 1
+                current_idx = next_open + 5 
+            else:
+                # Se troviamo una chiusura, diminuiamo il livello
+                balance -= 1
+                current_idx = next_close + 7 # Lunghezza di </span>
+        
+        # Sostituiamo TUTTO il blocco identificato con il testo pulito
+        replacement = f" **(Formula: {formula_latex})** "
+        text = text[:start_idx] + replacement + text[current_idx:]
+        
+    return text
+
 # --- 6. TOOLBAR CONFIG ---
 toolbar_config = [
     ['bold', 'italic', 'underline', 'strike'],
@@ -195,12 +246,8 @@ def open_edit_popup(note_id):
     raw_content = note.get('contenuto', '')
     old_filename = note.get('file_name', None)
 
-    # PULIZIA FORMULE
-    clean_content = re.sub(
-        r'<span class="ql-formula"[\s\S]*?data-value="([^"]+)"[\s\S]*?>[\s\S]*?</span>', 
-        r' **(Formula: \1)** ', 
-        raw_content
-    )
+    # USA LA NUOVA FUNZIONE DI PULIZIA ROBUSTA
+    clean_content = clean_formulas_robust(raw_content)
 
     st.markdown("### Edit Content")
     
@@ -286,9 +333,6 @@ st.markdown("---")
 
 # --- CREATE NOTE EXPANDER (FORCE CLOSE TRICK) ---
 
-# IL TRUCCO: Aggiungiamo caratteri invisibili al titolo in base al contatore.
-# Quando il titolo cambia (es. da "Create Note" a "Create Note "), Streamlit
-# crede che sia un NUOVO expander e lo inizializza chiuso.
 expander_label = f"Create New Note{'\u200b' * st.session_state.reset_counter}"
 
 with st.expander(expander_label, expanded=False):
@@ -322,12 +366,8 @@ with st.expander(expander_label, expanded=False):
                 time.sleep(0.5)
                 
                 # AZIONI POST-SALVATAGGIO:
-                # 1. Cambiamo la chiave dell'editor per svuotarlo
                 st.session_state.create_key = str(uuid.uuid4())
-                
-                # 2. Incrementiamo il contatore per cambiare il nome della tendina (e forzare la chiusura)
                 st.session_state.reset_counter += 1
-                
                 st.rerun()
             else:
                 st.warning("Title and content required.")
@@ -372,7 +412,6 @@ def render_notes_grid(note_list):
                 st.markdown("---")
                 c_mod, c_pin, c_del = st.columns(3)
                 
-                # TASTI CON EMOJI
                 if c_mod.button("✏️ Edit", key=f"mod_{note['_id']}"):
                     open_edit_popup(note['_id'])
                 

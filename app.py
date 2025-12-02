@@ -15,10 +15,10 @@ st.set_page_config(page_title="DOR NOTES", page_icon="📄", layout="wide")
 if 'text_size' not in st.session_state: st.session_state.text_size = "16px"
 if 'edit_trigger' not in st.session_state: st.session_state.edit_trigger = 0
 
-# CONTATORE PER IL TRUCCO "CHIUSURA FORZATA TENDINA"
+# COUNTER FOR EXPANDER RESET TRICK
 if 'reset_counter' not in st.session_state: st.session_state.reset_counter = 0
 
-# Chiave per svuotare l'editor
+# KEY FOR EDITOR RESET
 if 'create_key' not in st.session_state: st.session_state.create_key = str(uuid.uuid4())
 
 # --- 3. CSS AESTHETIC ---
@@ -59,13 +59,31 @@ st.markdown(f"""
         line-height: 1.6;
     }}
     
+    /* LINK STYLE IN READ MODE */
     .quill-read-content a {{
         color: #1E90FF !important;
         text-decoration: underline !important;
         cursor: pointer !important;
     }}
 
-    /* --- BLACK BORDER FORCE FIX --- */
+    /* BADGE STYLE (LABELS) */
+    .dor-badge {{
+        display: inline-block;
+        background-color: #f0f0f0;
+        color: #333;
+        border: 1px solid #ddd;
+        padding: 2px 8px;
+        border-radius: 12px;
+        font-size: 0.75rem;
+        font-family: 'Helvetica', sans-serif;
+        margin-right: 5px;
+        margin-bottom: 5px;
+        font-weight: 600;
+        letter-spacing: 0.5px;
+        text-transform: uppercase;
+    }}
+
+    /* --- BLACK BORDER FIX --- */
     div[data-baseweb="input"] {{ border-color: #e0e0e0 !important; border-radius: 5px !important; }}
     div[data-baseweb="input"]:focus-within {{ border: 1px solid #333333 !important; box-shadow: none !important; }}
     div[data-baseweb="textarea"] {{ border-color: #e0e0e0 !important; border-radius: 5px !important; }}
@@ -93,7 +111,7 @@ st.markdown(f"""
         align-items: center;
     }}
     
-    /* Styling per sezione Pinned/All Notes */
+    /* PINNED HEADER */
     .pinned-header {{
         font-family: 'Helvetica Neue', 'Helvetica', 'Arial', sans-serif;
         font-weight: 300;
@@ -113,7 +131,7 @@ if 'first_load' not in st.session_state:
     placeholder = st.empty()
     with placeholder.container():
         st.markdown("<div class='splash-text'>DOR NOTES</div>", unsafe_allow_html=True)
-        time.sleep(2.0) # Solo all'avvio va bene
+        time.sleep(2.0)
     placeholder.empty()
     st.session_state['first_load'] = True
 
@@ -145,39 +163,14 @@ def convert_notes_to_json(note_list):
 
 def sanitize_links(html_content):
     if not html_content: return ""
-    pattern = r'<a href="([^"]*)"'
-    replacement = r'<a href="\1" target="_blank" style="color: #1E90FF !important; text-decoration: underline !important; cursor: pointer;" rel="noopener noreferrer"'
-    return re.sub(pattern, replacement, html_content)
+    return re.sub(r'<a href="(.*?)"', r'<a href="\1" target="_blank" style="color: #1E90FF !important; text-decoration: underline !important; cursor: pointer;" rel="noopener noreferrer"', html_content)
 
-def clean_formulas_robust(text):
-    if not text: return ""
-    while True:
-        start_marker = '<span class="ql-formula"'
-        start_idx = text.find(start_marker)
-        if start_idx == -1: break 
-        end_open_tag = text.find('>', start_idx)
-        if end_open_tag == -1: break 
-        open_tag_content = text[start_idx:end_open_tag]
-        match = re.search(r'data-value="([^"]+)"', open_tag_content)
-        formula_latex = match.group(1) if match else "Formula"
-        balance = 1
-        current_idx = end_open_tag + 1
-        while balance > 0 and current_idx < len(text):
-            next_open = text.find('<span', current_idx)
-            next_close = text.find('</span>', current_idx)
-            if next_close == -1: 
-                balance = 0
-                current_idx = len(text)
-                break
-            if next_open != -1 and next_open < next_close:
-                balance += 1
-                current_idx = next_open + 5 
-            else:
-                balance -= 1
-                current_idx = next_close + 7 
-        replacement = f" **(Formula: {formula_latex})** "
-        text = text[:start_idx] + replacement + text[current_idx:]
-    return text
+def render_badges(labels_list):
+    if not labels_list: return ""
+    html = ""
+    for label in labels_list:
+        html += f"<span class='dor-badge'>{label}</span>"
+    return html
 
 # --- 6. TOOLBAR CONFIG ---
 toolbar_config = [
@@ -214,38 +207,41 @@ def open_settings():
         if res.deleted_count > 0: st.success(f"Cleaned {res.deleted_count} items.")
 
 @st.dialog("Edit Note", width="large")
-def open_edit_popup(note_id):
-    # OTTIMIZZAZIONE: Recuperiamo solo i campi necessari se possibile, ma per l'edit serve tutto
-    note = collection.find_one({"_id": note_id})
-    if not note:
-        st.error("Note not found.")
-        if st.button("Close"): st.rerun()
-        return
-
-    old_title = note.get('titolo', '')
-    raw_content = note.get('contenuto', '')
-    old_filename = note.get('file_name', None)
-
-    clean_content = clean_formulas_robust(raw_content)
-
+def open_edit_popup(note_id, old_title, old_content, old_filename, old_labels):
     st.markdown("### Edit Content")
+    
+    labels_str = ", ".join(old_labels) if old_labels else ""
     
     with st.form(key=f"edit_form_{note_id}"):
         new_title = st.text_input("Title", value=old_title)
         
-        unique_key = f"quill_edit_{note_id}_{st.session_state.edit_trigger}"
-        new_content = st_quill(value=clean_content, toolbar=toolbar_config, html=True, key=unique_key)
+        # LABELS
+        new_labels_str = st.text_input("Labels (comma separated)", value=labels_str, placeholder="Important, Work...")
+        
+        # SAFE MODE
+        use_safe_mode = st.toggle("⚠️ Safe Mode (Enable if editor crashes)")
+        
+        if use_safe_mode:
+            st.warning("Editing Raw HTML.")
+            new_content = st.text_area("Raw Content", value=old_content, height=300)
+        else:
+            unique_key = f"quill_edit_{note_id}_{st.session_state.edit_trigger}"
+            new_content = st_quill(value=old_content, toolbar=toolbar_config, html=True, key=unique_key)
         
         st.divider()
         st.markdown("### Attachments")
+        
         new_file = st.file_uploader("Replace File", type=['pdf', 'docx', 'txt', 'mp3', 'wav', 'jpg', 'png'])
         
         submitted = st.form_submit_button("Save Changes", type="primary")
         
         if submitted:
+            labels_list = [tag.strip() for tag in new_labels_str.split(",") if tag.strip()]
+            
             update_data = {
                 "titolo": new_title, 
                 "contenuto": new_content, 
+                "labels": labels_list,
                 "data": datetime.now()
             }
             if new_file:
@@ -253,11 +249,11 @@ def open_edit_popup(note_id):
                 update_data["file_data"] = bson.binary.Binary(new_file.getvalue())
             
             collection.update_one({"_id": note_id}, {"$set": update_data})
-            st.session_state.edit_trigger += 1
-            st.rerun() # RERUN IMMEDIATO SENZA SLEEP
+            st.session_state.edit_trigger += 1 
+            st.rerun()
 
     if old_filename:
-        st.caption(f"Attachment: {old_filename}")
+        st.info(f"Current file: **{old_filename}**")
         if st.button("Remove file", key=f"rm_file_{note_id}"):
             collection.update_one({"_id": note_id}, {"$set": {"file_name": None, "file_data": None}})
             st.rerun()
@@ -310,7 +306,7 @@ with head_col3:
 
 st.markdown("---") 
 
-# --- CREATE NOTE EXPANDER ---
+# --- CREATE NOTE (RESET TRICK) ---
 
 expander_label = f"Create New Note{'\u200b' * st.session_state.reset_counter}"
 
@@ -318,11 +314,14 @@ with st.expander(expander_label, expanded=False):
     with st.form("create_note_form", clear_on_submit=True):
         title_input = st.text_input("Title")
         
+        # LABELS
+        labels_input = st.text_input("Labels (comma separated)", placeholder="Important, Work...")
+        
         content_input = st_quill(
             placeholder="Write your thoughts here...",
             html=True,
             toolbar=toolbar_config,
-            key=f"quill_create_{st.session_state.create_key}" 
+            key=f"quill_create_{st.session_state.create_key}"
         )
         uploaded_file = st.file_uploader("Attachment", type=['pdf', 'docx', 'txt', 'mp3', 'wav', 'jpg', 'png'])
         
@@ -330,9 +329,12 @@ with st.expander(expander_label, expanded=False):
         
         if submitted_create:
             if title_input and content_input:
+                labels_list = [tag.strip() for tag in labels_input.split(",") if tag.strip()]
+                
                 doc = {
                     "titolo": title_input,
                     "contenuto": content_input,
+                    "labels": labels_list,
                     "data": datetime.now(),
                     "tipo": "testo_ricco",
                     "deleted": False, "pinned": False,
@@ -341,9 +343,8 @@ with st.expander(expander_label, expanded=False):
                 }
                 collection.insert_one(doc)
                 st.toast("Saved!", icon="✓")
-                # RIMOSSO TIME.SLEEP - Velocizza di 0.5s
                 
-                # AZIONI POST-SALVATAGGIO:
+                # RESET TRICK
                 st.session_state.create_key = str(uuid.uuid4())
                 st.session_state.reset_counter += 1
                 st.rerun()
@@ -352,12 +353,21 @@ with st.expander(expander_label, expanded=False):
 
 st.write("")
 query = st.text_input("🔍", placeholder="Search...", label_visibility="collapsed")
+
 filter_query = {"deleted": {"$ne": True}}
 if query:
-    filter_query = {"$and": [{"deleted": {"$ne": True}}, {"$or": [{"titolo": {"$regex": query, "$options": "i"}}, {"contenuto": {"$regex": query, "$options": "i"}}]}]}
+    filter_query = {
+        "$and": [
+            {"deleted": {"$ne": True}},
+            {"$or": [
+                {"titolo": {"$regex": query, "$options": "i"}},
+                {"contenuto": {"$regex": query, "$options": "i"}},
+                {"labels": {"$regex": query, "$options": "i"}}
+            ]}
+        ]
+    }
 
 all_notes = list(collection.find(filter_query).sort("data", -1))
-
 pinned_notes = [n for n in all_notes if n.get("pinned", False)]
 other_notes = [n for n in all_notes if not n.get("pinned", False)]
 
@@ -371,6 +381,12 @@ def render_notes_grid(note_list):
             icon_pin = "" if is_pinned else ""
             
             with st.expander(f"{icon_pin}{icon_clip} {note['titolo']}"):
+                
+                labels = note.get("labels", [])
+                if labels:
+                    st.markdown(render_badges(labels), unsafe_allow_html=True)
+                    st.write("")
+                
                 safe_content = sanitize_links(note['contenuto'])
                 st.markdown(f"<div class='quill-read-content'>{safe_content}</div>", unsafe_allow_html=True)
                 
@@ -379,24 +395,22 @@ def render_notes_grid(note_list):
                     fdata = note["file_data"]
                     st.markdown("---")
                     st.caption(f"Attachment: {note['file_name']}")
-                    
                     if fname.endswith(('.png', '.jpg', '.jpeg', '.gif')):
                         st.image(fdata)
                     elif fname.endswith(('.mp3', '.wav', '.ogg')):
                         st.audio(fdata)
-                    
                     st.download_button("Download File", data=fdata, file_name=note["file_name"])
                 
                 st.markdown("---")
                 c_mod, c_pin, c_del = st.columns(3)
                 
                 if c_mod.button("✎ Edit", key=f"mod_{note['_id']}"):
-                    open_edit_popup(note['_id'])
+                    open_edit_popup(note['_id'], note['titolo'], note['contenuto'], note.get("file_name"), labels)
                 
                 label_pin = "Unpin" if is_pinned else "⚲ Pin"
                 if c_pin.button(label_pin, key=f"pin_{note['_id']}"):
                      collection.update_one({"_id": note['_id']}, {"$set": {"pinned": not is_pinned}})
-                     st.rerun() # RERUN IMMEDIATO
+                     st.rerun()
 
                 if c_del.button("🗑 Delete", key=f"del_{note['_id']}"):
                     confirm_deletion(note['_id'])

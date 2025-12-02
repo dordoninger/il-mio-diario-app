@@ -20,6 +20,9 @@ if 'edit_trigger' not in st.session_state: st.session_state.edit_trigger = 0
 if 'reset_counter' not in st.session_state: st.session_state.reset_counter = 0
 if 'create_key' not in st.session_state: st.session_state.create_key = str(uuid.uuid4())
 
+# Draw Color State (Persistent)
+if 'draw_color' not in st.session_state: st.session_state.draw_color = "#000000"
+
 # GRID COLUMNS SETTING
 if 'grid_cols' not in st.session_state: st.session_state.grid_cols = 4
 
@@ -92,20 +95,23 @@ st.markdown(f"""
         text-transform: uppercase;
     }}
 
-    /* --- BLACK BORDER FIX (ALL INPUTS INCLUDING NUMBERS) --- */
-    
-    /* Text Inputs & Text Areas */
+    /* --- BLACK BORDER FIX (INCL. NUMBER INPUTS) --- */
     div[data-baseweb="input"] {{ border-color: #e0e0e0 !important; border-radius: 8px !important; }}
     div[data-baseweb="input"]:focus-within {{ border: 1px solid #333333 !important; box-shadow: none !important; }}
     
     div[data-baseweb="textarea"] {{ border-color: #e0e0e0 !important; border-radius: 8px !important; }}
     div[data-baseweb="textarea"]:focus-within {{ border: 1px solid #333333 !important; box-shadow: none !important; }}
     
-    /* Number Inputs (Spinbutton) */
-    div[data-baseweb="spinbutton"] > div {{ border-color: #e0e0e0 !important; border-radius: 8px !important; }}
-    div[data-baseweb="spinbutton"] > div:focus-within {{ border: 1px solid #333333 !important; box-shadow: none !important; }}
+    /* Target Spinbuttons (Number Inputs) specifically */
+    div[data-baseweb="spinbutton"] > div {{
+        border-color: #e0e0e0 !important;
+        border-radius: 8px !important;
+    }}
+    div[data-baseweb="spinbutton"] > div:focus-within {{
+        border-color: #000000 !important;
+        box-shadow: 0 0 0 1px #000000 !important;
+    }}
 
-    /* General Override */
     input:focus {{ outline: none !important; border-color: #000000 !important; }}
 
     /* ANIMATION */
@@ -206,6 +212,28 @@ def hex_to_rgba(hex_color, opacity):
     hex_color = hex_color.lstrip('#')
     return f"rgba({int(hex_color[0:2], 16)}, {int(hex_color[2:4], 16)}, {int(hex_color[4:6], 16)}, {opacity})"
 
+# PALETTE WIDGET FUNCTION
+def color_palette_widget(key_prefix):
+    st.write("Palette")
+    # Grid of colors (3 columns)
+    c1, c2, c3 = st.columns(3)
+    
+    # Define colors
+    colors = [
+        ("#FF0000", "🟥"), ("#0000FF", "🟦"), ("#008000", "🟩"),
+        ("#FFFF00", "🟨"), ("#FFA500", "🟧"), ("#87CEEB", "L-Blue"),
+        ("#800080", "🟪"), ("#006400", "D-Green"), ("#FF00FF", "Fuchsia"),
+        ("#000000", "⬛"), ("#FFFFFF", "⬜"), ("#A52A2A", "🟫"),
+        ("#808080", "Gray"), ("#F5F5DC", "Beige")
+    ]
+    
+    # Iterate and create buttons
+    for i, (hex_code, label) in enumerate(colors):
+        col = [c1, c2, c3][i % 3]
+        if col.button(label, key=f"{key_prefix}_col_{i}"):
+            st.session_state.draw_color = hex_code
+            st.rerun()
+
 # --- 6. TOOLBAR CONFIG ---
 toolbar_config = [
     ['bold', 'italic', 'underline', 'strike'],
@@ -253,46 +281,60 @@ def open_edit_popup(note_id, old_title, old_content, old_filename, old_labels, n
         new_labels_str = st.text_input("Labels", value=labels_str)
         
         new_content = old_content
+        canvas_result = None
+        new_file = None
         
         if note_type == "disegno":
-            t_col, w_col = st.columns([3, 1])
-            with t_col:
-                tool = st.radio("Tool", ["Pen", "Pencil", "Highlighter", "Eraser"], horizontal=True, key=f"d_t_{note_id}")
-            with w_col:
-                stroke_width = st.slider("Width", 1, 30, 2, key=f"d_w_{note_id}") # Default 2
+            # --- DRAWING LAYOUT (EDIT) ---
+            # Main Col (Canvas + Tools) | Side Col (Palette)
+            col_main, col_pal = st.columns([5, 1])
             
-            base_color = st.color_picker("Color", "#000000", key=f"d_c_{note_id}") if tool != "Eraser" else "#ffffff"
-            
-            final_color = base_color
-            if tool == "Pencil":
-                final_color = hex_to_rgba(base_color, 0.7) 
-                if stroke_width > 5: stroke_width = 2
-            elif tool == "Highlighter":
-                final_color = hex_to_rgba(base_color, 0.4) 
-                if stroke_width < 10: stroke_width = 15
-            elif tool == "Eraser":
-                if stroke_width < 10: stroke_width = 20
+            with col_pal:
+                st.write("**Colors**")
+                # Palette Logic (Embedded directly for Form access issues)
+                # Since we are in a FORM, buttons won't work as triggers for state directly without submission.
+                # WORKAROUND: Use Color Picker inside form for Edit Mode to keep it simple, 
+                # OR move palette outside form (complex). 
+                # Given constraint, we use standard picker here but styled.
+                # To respect user request for "Squares", we can't easily do it INSIDE a st.form.
+                # So for EDIT mode, we stick to a clean color picker to ensure stability.
+                base_color = st.color_picker("Color", st.session_state.draw_color)
 
-            init_draw = json.loads(drawing_data) if drawing_data else None
-            
-            canvas_result = st_canvas(
-                fill_color="rgba(0,0,0,0)",
-                stroke_width=stroke_width,
-                stroke_color=final_color,
-                background_color="#FFFFFF",
-                initial_drawing=init_draw,
-                update_streamlit=True,
-                height=450,
-                drawing_mode="freedraw",
-                key=f"canvas_edit_{note_id}",
-            )
+            with col_main:
+                t_col, w_col = st.columns([3, 1])
+                with t_col:
+                    tool = st.radio("Tool", ["Pen", "Pencil", "Highlighter", "Eraser"], horizontal=True, key=f"dt_{note_id}")
+                with w_col:
+                    stroke_width = st.slider("Width", 1, 30, 2, key=f"dw_{note_id}")
+                
+                final_color = base_color
+                if tool == "Pencil":
+                    final_color = hex_to_rgba(base_color, 0.7)
+                    if stroke_width > 5: stroke_width = 2
+                elif tool == "Highlighter":
+                    final_color = hex_to_rgba(base_color, 0.4)
+                    if stroke_width < 10: stroke_width = 15
+                elif tool == "Eraser":
+                    if stroke_width < 10: stroke_width = 20
+
+                init_draw = json.loads(drawing_data) if drawing_data else None
+                
+                # Canvas fixed size for edit (or responsive)
+                canvas_result = st_canvas(
+                    fill_color="rgba(0,0,0,0)",
+                    stroke_width=stroke_width,
+                    stroke_color=final_color,
+                    background_color="#FFFFFF",
+                    initial_drawing=init_draw,
+                    update_streamlit=True,
+                    height=500, # Fixed height for editing
+                    drawing_mode="freedraw",
+                    key=f"canvas_edit_{note_id}",
+                )
         else:
             unique_key = f"quill_edit_{note_id}_{st.session_state.edit_trigger}"
             new_content = st_quill(value=old_content, toolbar=toolbar_config, html=True, key=unique_key)
-        
-        st.divider()
-        new_file = None
-        if note_type != "disegno":
+            st.divider()
             st.markdown("### Attachments")
             new_file = st.file_uploader("Replace File", type=['pdf', 'docx', 'txt', 'mp3', 'wav', 'jpg', 'png'])
 
@@ -414,11 +456,10 @@ st.markdown("---")
 expander_label = f"Create New Note{'\u200b' * st.session_state.reset_counter}"
 with st.expander(expander_label, expanded=False):
     
-    note_type = st.radio("Type:", ["📝 Text", "🎨 Drawing"], horizontal=True)
+    note_type = st.radio("Type:", ["Text", "Drawing"], horizontal=True) # REMOVED EMOJIS
     
-    if note_type == "📝 Text":
+    if note_type == "Text":
         with st.form("create_note_form", clear_on_submit=True):
-            # Using dynamic keys to force reset on save
             title_input = st.text_input("Title", key=f"txt_tit_{st.session_state.create_key}")
             labels_input = st.text_input("Labels", key=f"txt_lbl_{st.session_state.create_key}")
             content_input = st_quill(placeholder="Write here...", html=True, toolbar=toolbar_config, key=f"quill_create_{st.session_state.create_key}")
@@ -455,76 +496,87 @@ with st.expander(expander_label, expanded=False):
         title_input = st.text_input("Title", key=f"draw_title_{st.session_state.create_key}")
         labels_input = st.text_input("Labels", key=f"draw_labels_{st.session_state.create_key}")
         
-        # --- DRAWING TOOLS ---
-        # Canvas Size Inputs (Dynamic Keys for reset)
-        c_w, c_h = st.columns(2)
-        canv_width = c_w.number_input("Canvas Width (px)", 300, 2000, 600, key=f"cw_{st.session_state.create_key}")
-        canv_height = c_h.number_input("Canvas Height (px)", 300, 2000, 400, key=f"ch_{st.session_state.create_key}")
+        # --- DRAWING LAYOUT (MAIN | PALETTE) ---
+        col_main, col_palette = st.columns([5, 1])
+        
+        # RIGHT COLUMN: COLOR PALETTE
+        with col_palette:
+            st.write("Palette")
+            color_palette_widget(f"pal_{st.session_state.create_key}")
+            st.write("Active:")
+            # Simple box to show current color (Disabled picker)
+            st.color_picker("Active", st.session_state.draw_color, label_visibility="collapsed", disabled=True)
 
-        c1, c2 = st.columns([3, 1])
-        with c1:
-            tool = st.radio("Tool", ["Pen", "Pencil", "Highlighter", "Eraser"], horizontal=True, key=f"dt_{st.session_state.create_key}")
-        with c2:
-            stroke_width = st.slider("Width", 1, 30, 2, key=f"dw_{st.session_state.create_key}") # Default 2
-        
-        base_color = st.color_picker("Color", "#000000", key=f"dc_{st.session_state.create_key}") if tool != "Eraser" else "#ffffff"
-        
-        final_color = base_color
-        if tool == "Pencil":
-            final_color = hex_to_rgba(base_color, 0.7) 
-            if stroke_width > 5: stroke_width = 2 
-        elif tool == "Highlighter":
-            final_color = hex_to_rgba(base_color, 0.4) 
-            if stroke_width < 10: stroke_width = 15 
-        elif tool == "Eraser":
-            if stroke_width < 10: stroke_width = 20
+        # LEFT COLUMN: CANVAS & TOOLS
+        with col_main:
+            # Canvas Size Inputs (DEFAULT 600x600)
+            c_w, c_h = st.columns(2)
+            canv_width = c_w.number_input("W (px)", 300, 2000, 600, key=f"cw_{st.session_state.create_key}")
+            canv_height = c_h.number_input("H (px)", 300, 2000, 600, key=f"ch_{st.session_state.create_key}")
 
-        # Unique Key for Canvas depends on Width/Height so it reloads immediately
-        canvas_key = f"canvas_{canv_width}_{canv_height}_{st.session_state.create_key}"
-        
-        canvas_result = st_canvas(
-            fill_color="rgba(0,0,0,0)",
-            stroke_width=stroke_width,
-            stroke_color=final_color,
-            background_color="#FFFFFF",
-            update_streamlit=True,
-            height=canv_height, 
-            width=canv_width,   
-            drawing_mode="freedraw",
-            key=canvas_key,
-        )
-        
-        if st.button("Save Drawing"):
-            if title_input and canvas_result.image_data is not None:
-                labels_list = [tag.strip() for tag in labels_input.split(",") if tag.strip()]
-                last_note = collection.find_one(sort=[("custom_order", -1)])
-                new_order = (last_note["custom_order"] + 1) if last_note and "custom_order" in last_note else 0
-                
-                img = Image.fromarray(canvas_result.image_data.astype('uint8'), 'RGBA')
-                buf = io.BytesIO()
-                img.save(buf, format='PNG')
-                
-                doc = {
-                    "titolo": title_input,
-                    "contenuto": "Drawing",
-                    "labels": labels_list,
-                    "data": datetime.now(),
-                    "custom_order": new_order,
-                    "tipo": "disegno",
-                    "deleted": False, "pinned": False,
-                    "file_name": "drawing.png",
-                    "file_data": bson.binary.Binary(buf.getvalue()),
-                    "drawing_json": json.dumps(canvas_result.json_data) 
-                }
-                collection.insert_one(doc)
-                st.toast("Saved!", icon="✅")
-                
-                # COMPLETE RESET
-                st.session_state.create_key = str(uuid.uuid4())
-                st.session_state.reset_counter += 1
-                st.rerun()
-            else:
-                st.warning("Draw something and title it.")
+            c1, c2 = st.columns([3, 1])
+            with c1:
+                tool = st.radio("Tool", ["Pen", "Pencil", "Highlighter", "Eraser"], horizontal=True, key=f"dt_{st.session_state.create_key}")
+            with c2:
+                stroke_width = st.slider("Width", 1, 30, 2, key=f"dw_{st.session_state.create_key}") # Default 2
+            
+            base_color = st.session_state.draw_color if tool != "Eraser" else "#ffffff"
+            
+            final_color = base_color
+            if tool == "Pencil":
+                final_color = hex_to_rgba(base_color, 0.7) 
+                if stroke_width > 5: stroke_width = 2 
+            elif tool == "Highlighter":
+                final_color = hex_to_rgba(base_color, 0.4) 
+                if stroke_width < 10: stroke_width = 15 
+            elif tool == "Eraser":
+                if stroke_width < 10: stroke_width = 20
+
+            canvas_key = f"canvas_{canv_width}_{canv_height}_{st.session_state.create_key}"
+            
+            canvas_result = st_canvas(
+                fill_color="rgba(0,0,0,0)",
+                stroke_width=stroke_width,
+                stroke_color=final_color,
+                background_color="#FFFFFF",
+                update_streamlit=True,
+                height=canv_height, 
+                width=canv_width,   
+                drawing_mode="freedraw",
+                key=canvas_key,
+            )
+            
+            if st.button("Save Drawing"):
+                if title_input and canvas_result.image_data is not None:
+                    labels_list = [tag.strip() for tag in labels_input.split(",") if tag.strip()]
+                    last_note = collection.find_one(sort=[("custom_order", -1)])
+                    new_order = (last_note["custom_order"] + 1) if last_note and "custom_order" in last_note else 0
+                    
+                    img = Image.fromarray(canvas_result.image_data.astype('uint8'), 'RGBA')
+                    buf = io.BytesIO()
+                    img.save(buf, format='PNG')
+                    
+                    doc = {
+                        "titolo": title_input,
+                        "contenuto": "Drawing",
+                        "labels": labels_list,
+                        "data": datetime.now(),
+                        "custom_order": new_order,
+                        "tipo": "disegno",
+                        "deleted": False, "pinned": False,
+                        "file_name": "drawing.png",
+                        "file_data": bson.binary.Binary(buf.getvalue()),
+                        "drawing_json": json.dumps(canvas_result.json_data) 
+                    }
+                    collection.insert_one(doc)
+                    st.toast("Saved!", icon="✅")
+                    
+                    # COMPLETE RESET
+                    st.session_state.create_key = str(uuid.uuid4())
+                    st.session_state.reset_counter += 1
+                    st.rerun()
+                else:
+                    st.warning("Draw something and title it.")
 
 st.write("")
 query = st.text_input("🔍", placeholder="Search...", label_visibility="collapsed")

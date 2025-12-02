@@ -14,9 +14,11 @@ st.set_page_config(page_title="DOR NOTES", page_icon="📄", layout="wide")
 # --- 2. STATE MANAGEMENT ---
 if 'text_size' not in st.session_state: st.session_state.text_size = "16px"
 if 'edit_trigger' not in st.session_state: st.session_state.edit_trigger = 0
+
+# Gestione apertura/chiusura tendina creazione
 if 'create_expanded' not in st.session_state: st.session_state.create_expanded = False
 
-# Gestione chiave univoca per pulire l'editor di creazione dopo il salvataggio
+# Gestione chiave univoca per svuotare l'editor dopo il salvataggio
 if 'create_key' not in st.session_state: st.session_state.create_key = str(uuid.uuid4())
 
 # --- 3. CSS AESTHETIC ---
@@ -91,11 +93,11 @@ st.markdown(f"""
         align-items: center;
     }}
     
-    /* Styling per sezione Pinned/All Notes (Modificato: Più piccolo) */
+    /* Styling per sezione Pinned/All Notes */
     .pinned-header {{
         font-family: 'Helvetica Neue', 'Helvetica', 'Arial', sans-serif;
         font-weight: 300;
-        font-size: 1.1rem; /* Ridotto per essere più discreto */
+        font-size: 1.1rem;
         color: #000;
         margin-top: 20px;
         margin-bottom: 10px;
@@ -193,7 +195,7 @@ def open_edit_popup(note_id):
     raw_content = note.get('contenuto', '')
     old_filename = note.get('file_name', None)
 
-    # PULIZIA FORMULE
+    # PULIZIA FORMULE (Versione stabile)
     clean_content = re.sub(
         r'<span class="ql-formula"[\s\S]*?data-value="([^"]+)"[\s\S]*?>[\s\S]*?</span>', 
         r' **(Formula: \1)** ', 
@@ -282,14 +284,14 @@ with head_col3:
 
 st.markdown("---") 
 
-# --- CREATE NOTE EXPANDER (MODIFICATO PER RESET TOTALE) ---
+# --- CREATE NOTE EXPANDER ---
 
+# Usiamo st.session_state.create_expanded per controllare apertura/chiusura
 with st.expander("Create New Note", expanded=st.session_state.create_expanded):
     with st.form("create_note_form", clear_on_submit=True):
         title_input = st.text_input("Title")
         
-        # Usiamo una chiave dinamica. Cambiandola dopo il salvataggio, 
-        # forziamo Streamlit a creare un editor NUOVO e VUOTO.
+        # Editor con chiave dinamica per reset totale
         content_input = st_quill(
             placeholder="Write your thoughts here...",
             html=True,
@@ -315,12 +317,13 @@ with st.expander("Create New Note", expanded=st.session_state.create_expanded):
                 st.toast("Saved!", icon="✅")
                 time.sleep(0.5)
                 
-                # RESET E CHIUSURA:
-                # 1. Chiude la tendina
+                # AZIONI POST-SALVATAGGIO:
+                # 1. Imposta la variabile per chiudere la tendina
                 st.session_state.create_expanded = False
-                # 2. Genera nuova chiave per pulire completamente l'editor
+                # 2. Aggiorna la chiave per resettare l'editor Quill
                 st.session_state.create_key = str(uuid.uuid4())
                 
+                # 3. Ricarica la pagina per applicare la chiusura
                 st.rerun()
             else:
                 st.warning("Title and content required.")
@@ -365,15 +368,16 @@ def render_notes_grid(note_list):
                 st.markdown("---")
                 c_mod, c_pin, c_del = st.columns(3)
                 
-                if c_mod.button("Edit", key=f"mod_{note['_id']}"):
+                # TASTI CON EMOJI
+                if c_mod.button("✏️ Edit", key=f"mod_{note['_id']}"):
                     open_edit_popup(note['_id'])
                 
-                label_pin = "Unpin" if is_pinned else "Pin"
+                label_pin = "📍 Unpin" if is_pinned else "📌 Pin"
                 if c_pin.button(label_pin, key=f"pin_{note['_id']}"):
                      collection.update_one({"_id": note['_id']}, {"$set": {"pinned": not is_pinned}})
                      st.rerun()
 
-                if c_del.button("Delete", key=f"del_{note['_id']}"):
+                if c_del.button("🗑️ Delete", key=f"del_{note['_id']}"):
                     confirm_deletion(note['_id'])
 
 if not all_notes:

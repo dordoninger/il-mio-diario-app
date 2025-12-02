@@ -67,6 +67,12 @@ st.markdown(f"""
         line-height: 1.6;
     }}
     
+    .quill-read-content a {{
+        color: #1E90FF !important;
+        text-decoration: underline !important;
+        cursor: pointer !important;
+    }}
+
     /* BADGE STYLE */
     .dor-badge {{
         display: inline-block;
@@ -107,7 +113,10 @@ st.markdown(f"""
         margin-top: 30vh;
     }}
     
-    div[data-testid="column"] {{ display: flex; align-items: center; }}
+    div[data-testid="column"] {{
+        display: flex;
+        align-items: center;
+    }}
     
     /* PINNED HEADER */
     .pinned-header {{
@@ -171,33 +180,39 @@ def convert_notes_to_json(note_list):
 
 def process_content_for_display(html_content):
     """
-    Rende visibili i checkbox usando simboli minimali e puliti.
+    Funzione potente per pulire l'HTML per la visualizzazione:
+    1. Rende i link cliccabili (nuova scheda)
+    2. TRASFORMA LE LISTE CHECKBOX IN DIV (Rimuove i pallini)
     """
     if not html_content: return ""
     
     # 1. FIX LINKS
     html_content = re.sub(r'<a href="(.*?)"', r'<a href="\1" target="_blank" style="color: #1E90FF !important; text-decoration: underline !important; cursor: pointer;" rel="noopener noreferrer"', html_content)
     
-    # 2. FIX CHECKBOXES (MINIMAL STYLE)
-    # Rimuove lo span interno inutile di Quill
+    # 2. FIX CHECKBOXES (STRUCTURE REPLACEMENT)
+    # Rimuove lo span inutile di Quill
     html_content = html_content.replace('<span class="ql-ui" contenteditable="false"></span>', '')
     
-    # Unchecked: Quadrato vuoto sottile (☐) con leggero margine
-    # Simbolo Unicode: &#9744; (BALLOT BOX)
+    # Sostituisce <li> con <div> per evitare i pallini automatici del browser
+    
+    # Unchecked: Simbolo Unicode &#9744; (Quadrato vuoto minimale)
     html_content = re.sub(
-        r'<li data-list="unchecked">', 
-        r'<li style="list-style-type: none; display: flex; align-items: flex-start; margin-bottom: 4px;"><span style="margin-right: 10px; font-size: 1.1em; color: #555;">&#9744;</span>', 
-        html_content
+        r'<li data-list="unchecked">(.*?)</li>', 
+        r'<div style="display: flex; align-items: flex-start; margin-bottom: 4px; margin-left: 5px;"><span style="margin-right: 10px; font-size: 1.2em; color: #555; line-height: 1.2;">&#9744;</span><span>\1</span></div>', 
+        html_content,
+        flags=re.DOTALL
     )
     
-    # Checked: Quadrato con spunta (☑)
-    # Simbolo Unicode: &#9745; (BALLOT BOX WITH CHECK)
-    # Aggiungiamo colore grigio al testo per indicare "fatto"
+    # Checked: Simbolo Unicode &#9745; (Quadrato con spunta minimale)
     html_content = re.sub(
-        r'<li data-list="checked">', 
-        r'<li style="list-style-type: none; display: flex; align-items: flex-start; margin-bottom: 4px; color: #888; text-decoration: line-through;"><span style="margin-right: 10px; font-size: 1.1em; color: #333; text-decoration: none;">&#9745;</span>', 
-        html_content
+        r'<li data-list="checked">(.*?)</li>', 
+        r'<div style="display: flex; align-items: flex-start; margin-bottom: 4px; margin-left: 5px; color: #888; text-decoration: line-through;"><span style="margin-right: 10px; font-size: 1.2em; color: #333; text-decoration: none; line-height: 1.2;">&#9745;</span><span>\1</span></div>', 
+        html_content,
+        flags=re.DOTALL
     )
+    
+    # Rimuove i tag <ul> residui che potrebbero creare spazi vuoti
+    html_content = html_content.replace('<ul>', '').replace('</ul>', '')
     
     return html_content
 

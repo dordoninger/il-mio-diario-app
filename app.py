@@ -17,7 +17,7 @@ if 'edit_trigger' not in st.session_state: st.session_state.edit_trigger = 0
 if 'reset_counter' not in st.session_state: st.session_state.reset_counter = 0
 if 'create_key' not in st.session_state: st.session_state.create_key = str(uuid.uuid4())
 
-# GRID COLUMNS SETTING (Default: 4)
+# GRID COLUMNS SETTING
 if 'grid_cols' not in st.session_state: st.session_state.grid_cols = 4
 
 # --- 3. CSS AESTHETIC ---
@@ -36,7 +36,7 @@ st.markdown(f"""
         margin-bottom: 0px;
     }}
 
-    /* --- ROUNDED NOTES & COMPACT HEADERS --- */
+    /* EXPANDER STYLE */
     .streamlit-expander {{
         border-radius: 12px !important;
         border: 1px solid #e0e0e0 !important;
@@ -66,49 +66,7 @@ st.markdown(f"""
         font-family: 'Georgia', serif;
         line-height: 1.6;
     }}
-    .quill-read-content a {{
-        color: #1E90FF !important;
-        text-decoration: underline !important;
-        cursor: pointer !important;
-    }}
-
-    /* --- CHECKBOX VISIBILITY FIX (READ MODE) --- */
-    /* This makes the hidden Quill checkboxes visible in Read Mode */
-    .quill-read-content ul {{
-        padding-left: 0;
-        list-style-type: none;
-    }}
     
-    .quill-read-content li[data-list="checked"] {{
-        position: relative;
-        padding-left: 25px;
-        color: #888; /* Slightly dimmed when checked */
-        text-decoration: line-through; /* Optional: Strike text */
-    }}
-    .quill-read-content li[data-list="checked"]::before {{
-        content: "☑";
-        position: absolute;
-        left: 0;
-        top: 0;
-        color: #4CAF50; /* Green check */
-        font-weight: bold;
-        font-size: 1.2em;
-    }}
-    
-    .quill-read-content li[data-list="unchecked"] {{
-        position: relative;
-        padding-left: 25px;
-    }}
-    .quill-read-content li[data-list="unchecked"]::before {{
-        content: "☐";
-        position: absolute;
-        left: 0;
-        top: 0;
-        color: #555;
-        font-weight: bold;
-        font-size: 1.2em;
-    }}
-
     /* BADGE STYLE */
     .dor-badge {{
         display: inline-block;
@@ -149,10 +107,7 @@ st.markdown(f"""
         margin-top: 30vh;
     }}
     
-    div[data-testid="column"] {{
-        display: flex;
-        align-items: center;
-    }}
+    div[data-testid="column"] {{ display: flex; align-items: center; }}
     
     /* PINNED HEADER */
     .pinned-header {{
@@ -214,9 +169,37 @@ def convert_notes_to_json(note_list):
         export_list.append(nota_export)
     return json.dumps(export_list, indent=4)
 
-def sanitize_links(html_content):
+def process_content_for_display(html_content):
+    """
+    Rende visibili i checkbox usando simboli minimali e puliti.
+    """
     if not html_content: return ""
-    return re.sub(r'<a href="(.*?)"', r'<a href="\1" target="_blank" style="color: #1E90FF !important; text-decoration: underline !important; cursor: pointer;" rel="noopener noreferrer"', html_content)
+    
+    # 1. FIX LINKS
+    html_content = re.sub(r'<a href="(.*?)"', r'<a href="\1" target="_blank" style="color: #1E90FF !important; text-decoration: underline !important; cursor: pointer;" rel="noopener noreferrer"', html_content)
+    
+    # 2. FIX CHECKBOXES (MINIMAL STYLE)
+    # Rimuove lo span interno inutile di Quill
+    html_content = html_content.replace('<span class="ql-ui" contenteditable="false"></span>', '')
+    
+    # Unchecked: Quadrato vuoto sottile (☐) con leggero margine
+    # Simbolo Unicode: &#9744; (BALLOT BOX)
+    html_content = re.sub(
+        r'<li data-list="unchecked">', 
+        r'<li style="list-style-type: none; display: flex; align-items: flex-start; margin-bottom: 4px;"><span style="margin-right: 10px; font-size: 1.1em; color: #555;">&#9744;</span>', 
+        html_content
+    )
+    
+    # Checked: Quadrato con spunta (☑)
+    # Simbolo Unicode: &#9745; (BALLOT BOX WITH CHECK)
+    # Aggiungiamo colore grigio al testo per indicare "fatto"
+    html_content = re.sub(
+        r'<li data-list="checked">', 
+        r'<li style="list-style-type: none; display: flex; align-items: flex-start; margin-bottom: 4px; color: #888; text-decoration: line-through;"><span style="margin-right: 10px; font-size: 1.1em; color: #333; text-decoration: none;">&#9745;</span>', 
+        html_content
+    )
+    
+    return html_content
 
 def render_badges(labels_list):
     if not labels_list: return ""
@@ -229,7 +212,7 @@ def render_badges(labels_list):
 toolbar_config = [
     ['bold', 'italic', 'underline', 'strike'],
     [{ 'header': [1, 2, 3, False] }],
-    [{ 'list': 'ordered'}, { 'list': 'bullet'}, { 'list': 'check' }], # CHECKLIST ENABLED
+    [{ 'list': 'ordered'}, { 'list': 'bullet'}, { 'list': 'check' }], # CHECKLIST
     [{ 'script': 'sub'}, { 'script': 'super' }], 
     [{ 'color': [] }, { 'background': [] }],
     [{ 'font': [] }],
@@ -357,7 +340,7 @@ def open_trash():
         st.divider()
         for note in trash_notes:
             with st.expander(f"🗑 {note['titolo']}"):
-                safe_content = sanitize_links(note['contenuto'])
+                safe_content = process_content_for_display(note['contenuto'])
                 st.markdown(f"<div class='quill-read-content'>{safe_content}</div>", unsafe_allow_html=True)
                 c1, c2 = st.columns(2)
                 if c1.button("↺ Restore", key=f"r_{note['_id']}"):
@@ -459,7 +442,6 @@ def render_notes_grid(note_list):
             icon_clip = "🖇️ " if note.get("file_name") else ""
             labels = note.get("labels", [])
             icon_label = "🏷️ " if labels else ""
-            
             is_pinned = note.get("pinned", False)
             icon_pin = "" 
             
@@ -470,7 +452,7 @@ def render_notes_grid(note_list):
                     st.markdown(render_badges(labels), unsafe_allow_html=True)
                     st.write("")
                 
-                safe_content = sanitize_links(note['contenuto'])
+                safe_content = process_content_for_display(note['contenuto'])
                 st.markdown(f"<div class='quill-read-content'>{safe_content}</div>", unsafe_allow_html=True)
                 
                 if note.get("file_name"):

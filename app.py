@@ -16,7 +16,7 @@ if 'text_size' not in st.session_state: st.session_state.text_size = "16px"
 # Trigger to force updates
 if 'edit_trigger' not in st.session_state: st.session_state.edit_trigger = 0
 
-# --- 3. CSS AESTHETIC (VERSION 19 - NO RED BORDER) ---
+# --- 3. CSS AESTHETIC (CORRECTED - NO RED BORDER) ---
 st.markdown(f"""
 <style>
     /* TITLE STYLE */
@@ -64,28 +64,31 @@ st.markdown(f"""
     /* --- INPUT BORDER FIX (REMOVES RED) --- */
     
     /* Input Fields (Title & Search) - Normal State */
-    .stTextInput > div > div {
+    .stTextInput > div > div {{
         border-color: #e0e0e0 !important;
-    }
+    }}
     
     /* Input Fields - Focused State (When you click) */
-    .stTextInput > div > div:focus-within {
+    .stTextInput > div > div:focus-within {{
         border-color: #333333 !important; /* Dark Grey Border */
         box-shadow: none !important;      /* REMOVES RED GLOW */
-    }
+    }}
 
-    /* Text Area (if used anywhere else) */
-    .stTextArea > div > div:focus-within {
+    /* Text Area */
+    .stTextArea > div > div {{
+        border-color: #e0e0e0;
+    }}
+    .stTextArea > div > div:focus-within {{
         border-color: #333333 !important;
         box-shadow: none !important;
-    }
+    }}
 
     /* Standard Input override generic */
-    input:focus {
+    input:focus {{
         border-color: #333333 !important;
         outline: none !important;
         box-shadow: none !important;
-    }
+    }}
     
     /* ANIMATION (2 SECONDS) */
     @keyframes fade-in {{

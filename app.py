@@ -220,11 +220,11 @@ with head_col1:
     st.markdown("<div class='dor-title'>DOR NOTES</div>", unsafe_allow_html=True)
 
 with head_col2:
-    if st.button("⚙️:gear:", help="Impostazioni"):
+    if st.button("Options", help="Impostazioni"):
         apri_impostazioni()
 
 with head_col3:
-    if st.button("🗑️", help="Cestino"):
+    if st.button("Bin", help="Cestino"):
         apri_cestino()
 
 st.markdown("---") # Linea divisoria sottile subito sotto l'header

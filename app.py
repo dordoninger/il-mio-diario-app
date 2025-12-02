@@ -145,7 +145,7 @@ if client is None: st.stop()
 db = client.diario_db
 collection = db.note
 
-# --- 5. LOGIC & MIGRATION ---
+# --- 5. LOGIC ---
 def ensure_custom_order():
     count_missing = collection.count_documents({"custom_order": {"$exists": False}})
     if count_missing > 0:
@@ -252,23 +252,25 @@ def open_edit_popup(note_id, old_title, old_content, old_filename, old_labels):
 
 # --- MOVE (SWAP) POPUP ---
 @st.dialog("Move Note", width="large")
-def open_move_popup(current_note_id, is_pinned):
+def open_move_popup(current_note_id):
     st.write("Select the note you want to swap positions with:")
     
-    # Filter candidates: Only non-deleted, same pinned status, AND NOT ITSELF
+    # FETCH ALL ACTIVE NOTES (No filter by pinned status anymore)
     candidates = list(collection.find({
         "deleted": {"$ne": True},
-        "pinned": is_pinned,
         "_id": {"$ne": current_note_id}
-    }).sort("custom_order", 1))
+    }).sort("custom_order", 1)) # Show in logical order
     
     if not candidates:
         st.warning("No other notes available to swap with.")
         return
 
-    # Create a dictionary for the selectbox: {ID: "Title (Order)"}
-    # Using index+1 for user-friendly order number
-    options = {n["_id"]: f"{i+1}. {n['titolo']}" for i, n in enumerate(candidates)}
+    # Helper to show if note is pinned in dropdown
+    def get_label(n):
+        status = "📌 Pinned" if n.get("pinned", False) else "📄 Normal"
+        return f"{status} | {n['titolo']}"
+
+    options = {n["_id"]: get_label(n) for n in candidates}
     
     selected_target_id = st.selectbox("Swap with:", options.keys(), format_func=lambda x: options[x])
     
@@ -278,12 +280,23 @@ def open_move_popup(current_note_id, is_pinned):
         target_note = collection.find_one({"_id": selected_target_id})
         
         if current_note and target_note:
+            # Get current values
             order_curr = current_note.get("custom_order", 0)
-            order_targ = target_note.get("custom_order", 0)
+            pinned_curr = current_note.get("pinned", False)
             
-            # 2. Swap Values
-            collection.update_one({"_id": current_note_id}, {"$set": {"custom_order": order_targ}})
-            collection.update_one({"_id": selected_target_id}, {"$set": {"custom_order": order_curr}})
+            order_targ = target_note.get("custom_order", 0)
+            pinned_targ = target_note.get("pinned", False)
+            
+            # 2. SWAP EVERYTHING (Order AND Pinned Status)
+            # This effectively makes Note A take Note B's exact spot in the UI
+            collection.update_one(
+                {"_id": current_note_id}, 
+                {"$set": {"custom_order": order_targ, "pinned": pinned_targ}}
+            )
+            collection.update_one(
+                {"_id": selected_target_id}, 
+                {"$set": {"custom_order": order_curr, "pinned": pinned_curr}}
+            )
             
             st.rerun()
 
@@ -416,19 +429,20 @@ def render_notes_grid(note_list):
                 
                 st.markdown("---")
                 
-                # 4 BUTTONS IN ONE ROW
                 c_mod, c_pin, c_move, c_del = st.columns(4)
                 
                 if c_mod.button("✎", key=f"mod_{note['_id']}", help="Edit"):
                     open_edit_popup(note['_id'], note['titolo'], note['contenuto'], note.get("file_name"), labels)
                 
-                label_pin = "Unpin" if is_pinned else "⚲"
-                if c_pin.button(label_pin, key=f"pin_{note['_id']}", help="Pin/Unpin"):
+                # UPDATED ICON FOR UNPIN
+                label_pin = "⚲" if is_pinned else "⚲"
+                help_text = "Unpin" if is_pinned else "Pin"
+                if c_pin.button(label_pin, key=f"pin_{note['_id']}", help=help_text):
                      collection.update_one({"_id": note['_id']}, {"$set": {"pinned": not is_pinned}})
                      st.rerun()
 
                 if c_move.button("⇄", key=f"mv_{note['_id']}", help="Move"):
-                    open_move_popup(note['_id'], is_pinned)
+                    open_move_popup(note['_id'])
 
                 if c_del.button("🗑", key=f"del_{note['_id']}", help="Delete"):
                     confirm_deletion(note['_id'])

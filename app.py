@@ -92,12 +92,21 @@ st.markdown(f"""
         text-transform: uppercase;
     }}
 
-    /* BLACK BORDER FIX */
+    /* --- BLACK BORDER FIX (ALL INPUTS INCLUDING NUMBERS) --- */
+    
+    /* Text Inputs & Text Areas */
     div[data-baseweb="input"] {{ border-color: #e0e0e0 !important; border-radius: 8px !important; }}
     div[data-baseweb="input"]:focus-within {{ border: 1px solid #333333 !important; box-shadow: none !important; }}
+    
     div[data-baseweb="textarea"] {{ border-color: #e0e0e0 !important; border-radius: 8px !important; }}
     div[data-baseweb="textarea"]:focus-within {{ border: 1px solid #333333 !important; box-shadow: none !important; }}
-    input:focus {{ outline: none !important; }}
+    
+    /* Number Inputs (Spinbutton) */
+    div[data-baseweb="spinbutton"] > div {{ border-color: #e0e0e0 !important; border-radius: 8px !important; }}
+    div[data-baseweb="spinbutton"] > div:focus-within {{ border: 1px solid #333333 !important; box-shadow: none !important; }}
+
+    /* General Override */
+    input:focus {{ outline: none !important; border-color: #000000 !important; }}
 
     /* ANIMATION */
     @keyframes fade-in {{
@@ -246,13 +255,11 @@ def open_edit_popup(note_id, old_title, old_content, old_filename, old_labels, n
         new_content = old_content
         
         if note_type == "disegno":
-            # --- DRAWING TOOLS (EDIT MODE) ---
             t_col, w_col = st.columns([3, 1])
             with t_col:
                 tool = st.radio("Tool", ["Pen", "Pencil", "Highlighter", "Eraser"], horizontal=True, key=f"d_t_{note_id}")
             with w_col:
-                # Default Width = 3
-                stroke_width = st.slider("Width", 1, 30, 3, key=f"d_w_{note_id}")
+                stroke_width = st.slider("Width", 1, 30, 2, key=f"d_w_{note_id}") # Default 2
             
             base_color = st.color_picker("Color", "#000000", key=f"d_c_{note_id}") if tool != "Eraser" else "#ffffff"
             
@@ -411,10 +418,11 @@ with st.expander(expander_label, expanded=False):
     
     if note_type == "📝 Text":
         with st.form("create_note_form", clear_on_submit=True):
-            title_input = st.text_input("Title")
-            labels_input = st.text_input("Labels (comma separated)")
+            # Using dynamic keys to force reset on save
+            title_input = st.text_input("Title", key=f"txt_tit_{st.session_state.create_key}")
+            labels_input = st.text_input("Labels", key=f"txt_lbl_{st.session_state.create_key}")
             content_input = st_quill(placeholder="Write here...", html=True, toolbar=toolbar_config, key=f"quill_create_{st.session_state.create_key}")
-            uploaded_file = st.file_uploader("Attachment", type=['pdf', 'docx', 'txt', 'mp3', 'wav', 'jpg', 'png'])
+            uploaded_file = st.file_uploader("Attachment", type=['pdf', 'docx', 'txt', 'mp3', 'wav', 'jpg', 'png'], key=f"txt_file_{st.session_state.create_key}")
             submitted_create = st.form_submit_button("Save Note")
             
             if submitted_create:
@@ -443,24 +451,23 @@ with st.expander(expander_label, expanded=False):
                     st.warning("Title and content required.")
     
     else: # DRAWING
-        title_input = st.text_input("Title", key="draw_title")
-        labels_input = st.text_input("Labels", key="draw_labels")
+        # Use simple text inputs but with dynamic keys for reset
+        title_input = st.text_input("Title", key=f"draw_title_{st.session_state.create_key}")
+        labels_input = st.text_input("Labels", key=f"draw_labels_{st.session_state.create_key}")
         
-        # --- NEW DRAWING TOOLS ---
-        # Canvas Size Inputs
+        # --- DRAWING TOOLS ---
+        # Canvas Size Inputs (Dynamic Keys for reset)
         c_w, c_h = st.columns(2)
-        canv_width = c_w.number_input("Canvas Width (px)", 300, 2000, 600)
-        canv_height = c_h.number_input("Canvas Height (px)", 300, 2000, 400)
+        canv_width = c_w.number_input("Canvas Width (px)", 300, 2000, 600, key=f"cw_{st.session_state.create_key}")
+        canv_height = c_h.number_input("Canvas Height (px)", 300, 2000, 400, key=f"ch_{st.session_state.create_key}")
 
-        # Tools Selector
         c1, c2 = st.columns([3, 1])
         with c1:
-            tool = st.radio("Tool", ["Pen", "Pencil", "Highlighter", "Eraser"], horizontal=True)
+            tool = st.radio("Tool", ["Pen", "Pencil", "Highlighter", "Eraser"], horizontal=True, key=f"dt_{st.session_state.create_key}")
         with c2:
-            stroke_width = st.slider("Width", 1, 30, 3)
+            stroke_width = st.slider("Width", 1, 30, 2, key=f"dw_{st.session_state.create_key}") # Default 2
         
-        # Logic for Tools (Color & Opacity)
-        base_color = st.color_picker("Color", "#000000") if tool != "Eraser" else "#ffffff"
+        base_color = st.color_picker("Color", "#000000", key=f"dc_{st.session_state.create_key}") if tool != "Eraser" else "#ffffff"
         
         final_color = base_color
         if tool == "Pencil":
@@ -472,8 +479,8 @@ with st.expander(expander_label, expanded=False):
         elif tool == "Eraser":
             if stroke_width < 10: stroke_width = 20
 
-        # USE UNIQUE KEY FOR CANVAS TO FORCE RESET ON SIZE CHANGE/SAVE
-        canvas_key = f"canvas_create_{st.session_state.create_key}"
+        # Unique Key for Canvas depends on Width/Height so it reloads immediately
+        canvas_key = f"canvas_{canv_width}_{canv_height}_{st.session_state.create_key}"
         
         canvas_result = st_canvas(
             fill_color="rgba(0,0,0,0)",
@@ -512,7 +519,7 @@ with st.expander(expander_label, expanded=False):
                 collection.insert_one(doc)
                 st.toast("Saved!", icon="✅")
                 
-                # RESET EVERYTHING INCLUDING CANVAS KEY
+                # COMPLETE RESET
                 st.session_state.create_key = str(uuid.uuid4())
                 st.session_state.reset_counter += 1
                 st.rerun()

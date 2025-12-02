@@ -218,15 +218,26 @@ def process_content_for_display(html_content):
 
 def flatten_formulas_to_text(html_content):
     """
-    IMPROVED FORMULA CLEANER
-    Extracts ONLY the latex data-value, ignoring the messy visual representation inside the span.
+    ROBUST FORMULA CLEANER V2
+    Captures content between <span... data-value="LATEX"> ... </span>
+    and replaces the WHOLE span with $$LATEX$$.
+    It uses a greedy match inside the tag to skip attributes, but a non-greedy match for content.
     """
     if not html_content: return ""
-    # Regex to find <span class="ql-formula" data-value="...">...</span>
-    # We grab only the 'data-value' part and ignore the rest of the span content.
-    pattern = r'<span class="ql-formula" data-value="([^"]*)">.*?</span>'
-    # Replace with $$ formula $$ to make it clear and editable
-    return re.sub(pattern, r' $$\1$$ ', html_content, flags=re.DOTALL)
+    
+    # Pattern Breakdown:
+    # <span class="ql-formula"    -> Find the start
+    # [^>]*?                      -> Skip other attributes until...
+    # data-value="                -> The data-value attribute
+    # (?P<formula>.+?)            -> CAPTURE the formula text (non-greedy)
+    # "                           -> Closing quote of data-value
+    # [^>]*?>                     -> Finish the opening tag
+    # .*?                         -> Match ANY garbage content inside (visuals)
+    # </span>                     -> Closing tag
+    
+    pattern = r'<span class="ql-formula"[^>]*?data-value="(?P<formula>.+?)"[^>]*?>.*?</span>'
+    
+    return re.sub(pattern, r' $$\g<formula>$$ ', html_content, flags=re.DOTALL)
 
 def render_badges(labels_list):
     if not labels_list: return ""
@@ -410,7 +421,7 @@ def open_edit_popup(note_id, old_title, old_content, old_filename, old_labels, n
                 new_date_str = str(new_date)
             except: pass
 
-        # CLEAN FORMULAS FOR EDITING
+        # CLEAN FORMULAS
         safe_content = flatten_formulas_to_text(old_content)
         
         canvas_result = None
@@ -673,6 +684,7 @@ with tab_cal:
     start_date_str = f"{st.session_state.cal_year}-{st.session_state.cal_month:02d}-01"
     end_date_str = f"{st.session_state.cal_year}-{st.session_state.cal_month:02d}-{num_days}"
     
+    # FETCH
     month_notes_reg = list(collection.find({
         "calendar_date": {"$gte": start_date_str, "$lte": end_date_str},
         "deleted": {"$ne": True}
@@ -765,7 +777,7 @@ with tab_cal:
                     if note.get("file_name") and note.get("tipo") != "disegno":
                         st.download_button("Download", data=note["file_data"], file_name=note["file_name"], key=f"dlc_{note['_id']}")
                     
-                    # CALENDAR BUTTONS (Grouped left)
+                    # CALENDAR BUTTONS (Compact & Left)
                     c1, c2, c3, c_space = st.columns([1, 1, 1, 6])
                     
                     if c1.button("✎ Edit", key=f"ced_{note['_id']}"):
@@ -811,7 +823,7 @@ with tab_cal:
                     st.rerun()
         else:
             with c_add:
-                if st.button("+ Add Note", key=f"add_{date_str}"):
+                if st.button("➕ Add Note", key=f"add_{date_str}"):
                     st.session_state.cal_create_date = date_str
                     st.rerun()
         

@@ -66,7 +66,7 @@ st.markdown(f"""
         cursor: pointer !important;
     }}
 
-    /* BADGE STYLE (LABELS) */
+    /* BADGE STYLE (LABELS INSIDE NOTE) */
     .dor-badge {{
         display: inline-block;
         background-color: #f0f0f0;
@@ -218,20 +218,15 @@ def open_edit_popup(note_id, old_title, old_content, old_filename, old_labels):
         # LABELS
         new_labels_str = st.text_input("Labels (comma separated)", value=labels_str, placeholder="Important, Work...")
         
-        # SAFE MODE
-        use_safe_mode = st.toggle("⚠️ Safe Mode (Enable if editor crashes)")
+        # RIMOSSA LA SAFE MODE COME RICHIESTO
         
-        if use_safe_mode:
-            st.warning("Editing Raw HTML.")
-            new_content = st.text_area("Raw Content", value=old_content, height=300)
-        else:
-            unique_key = f"quill_edit_{note_id}_{st.session_state.edit_trigger}"
-            new_content = st_quill(value=old_content, toolbar=toolbar_config, html=True, key=unique_key)
+        unique_key = f"quill_edit_{note_id}_{st.session_state.edit_trigger}"
+        new_content = st_quill(value=old_content, toolbar=toolbar_config, html=True, key=unique_key)
         
         st.divider()
         st.markdown("### Attachments")
         
-        new_file = st.file_uploader("Replace File", type=['pdf', 'docx', 'txt', 'mp3', 'wav', 'jpg', 'png'])
+        new_file = st.file_uploader("Replace File (Optional)", type=['pdf', 'docx', 'txt', 'mp3', 'wav', 'jpg', 'png'])
         
         submitted = st.form_submit_button("Save Changes", type="primary")
         
@@ -269,7 +264,7 @@ def open_trash():
             st.rerun()
         st.divider()
         for note in trash_notes:
-            with st.expander(f"🗑 {note['titolo']}"):
+            with st.expander(f"🗑️ {note['titolo']}"):
                 safe_content = sanitize_links(note['contenuto'])
                 st.markdown(f"<div class='quill-read-content'>{safe_content}</div>", unsafe_allow_html=True)
                 c1, c2 = st.columns(2)
@@ -306,7 +301,7 @@ with head_col3:
 
 st.markdown("---") 
 
-# --- CREATE NOTE (RESET TRICK) ---
+# --- CREATE NOTE ---
 
 expander_label = f"Create New Note{'\u200b' * st.session_state.reset_counter}"
 
@@ -344,7 +339,6 @@ with st.expander(expander_label, expanded=False):
                 collection.insert_one(doc)
                 st.toast("Saved!", icon="✓")
                 
-                # RESET TRICK
                 st.session_state.create_key = str(uuid.uuid4())
                 st.session_state.reset_counter += 1
                 st.rerun()
@@ -380,9 +374,16 @@ def render_notes_grid(note_list):
             is_pinned = note.get("pinned", False)
             icon_pin = "" if is_pinned else ""
             
-            with st.expander(f"{icon_pin}{icon_clip} {note['titolo']}"):
+            # --- MODIFICA VISIBILITÀ ETICHETTE ---
+            # Mostriamo le etichette nel titolo della tendina (es: [Tag1] [Tag2])
+            labels = note.get("labels", [])
+            labels_header = ""
+            if labels:
+                labels_header = " " + " ".join([f"[{lbl}]" for lbl in labels])
+            
+            with st.expander(f"{icon_pin}{icon_clip} {note['titolo']}{labels_header}"):
                 
-                labels = note.get("labels", [])
+                # Le mostriamo anche dentro come badge carini
                 if labels:
                     st.markdown(render_badges(labels), unsafe_allow_html=True)
                     st.write("")

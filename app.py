@@ -292,7 +292,7 @@ st.markdown("---")
 current_expander_key = f"create_expander_{st.session_state.expander_id}"
 
 # Sostituisci la riga 'with st.expander(...):' con questa versione che usa la KEY:
-with st.expander("Create New Note", expanded=False):
+with st.expander("Create New Note", expanded=False, key=f"create_expander_{st.session_state.expander_id}"):
     # (Streamlit chiuderà l'expander al rerun perché expanded=False è il default)
     # Se noti che non si chiude ancora, cambia la riga sopra in:
     # with st.expander("Create New Note", expanded=False, key=f"create_expander_{st.session_state.expander_id}"):

@@ -109,16 +109,14 @@ st.markdown(f"""
     div[data-testid="stNumberInput"] > div > div {{ border-color: #e0e0e0 !important; border-radius: 8px !important; }}
     div[data-testid="stNumberInput"] > div > div:focus-within {{ border: 1px solid #333333 !important; box-shadow: none !important; }}
     input:focus {{ outline: none !important; border-color: #000000 !important; }}
-    
-    /* BUTTON COMPACT STYLE (Smaller buttons for Calendar/Actions) */
+
+    /* BUTTON COMPACT STYLE */
     .stButton button {{
-        padding-top: 0.3rem !important;
-        padding-bottom: 0.3rem !important;
-        padding-left: 0.8rem !important;
-        padding-right: 0.8rem !important;
-        min-height: 0px !important;
-        height: auto !important;
-        line-height: 1.2 !important;
+        padding-top: 0.2rem !important;
+        padding-bottom: 0.2rem !important;
+        padding-left: 0.5rem !important;
+        padding-right: 0.5rem !important;
+        font-size: 0.9rem !important;
     }}
 
     /* ANIMATION */
@@ -154,7 +152,7 @@ st.markdown(f"""
     
     /* CALENDAR DAY NOTE */
     .cal-note-container {{
-        padding: 10px 0;
+        padding: 8px 0;
         margin-bottom: 5px;
         border-bottom: 1px solid #eee;
     }}
@@ -217,6 +215,14 @@ def process_content_for_display(html_content):
     html_content = re.sub(r'<li data-list="checked">(.*?)</li>', r'<div style="display: flex; align-items: flex-start; margin-bottom: 4px; margin-left: 5px; color: #888; text-decoration: line-through;"><span style="margin-right: 10px; font-size: 1.2em; color: #333; text-decoration: none; line-height: 1.2;">&#9745;</span><span>\1</span></div>', html_content, flags=re.DOTALL)
     html_content = html_content.replace('<ul>', '').replace('</ul>', '')
     return html_content
+
+def flatten_formulas_to_text(html_content):
+    """
+    Converts Quill formula tags back to raw Latex text.
+    <span class="ql-formula" data-value="x^2"></span>  -->  x^2
+    """
+    if not html_content: return ""
+    return re.sub(r'<span class="ql-formula" data-value="(.*?)"></span>', r' \1 ', html_content)
 
 def render_badges(labels_list):
     if not labels_list: return ""
@@ -400,9 +406,12 @@ def open_edit_popup(note_id, old_title, old_content, old_filename, old_labels, n
                 new_date_str = str(new_date)
             except: pass
 
-        new_content = old_content
+        # FLATTEN FORMULAS TO TEXT FOR EDITING (PREVENTS CRASH)
+        safe_content = flatten_formulas_to_text(old_content)
+        
         canvas_result = None
         new_file = None
+        new_content = safe_content
         
         if note_type == "disegno":
             c_col, c_tool, c_width = st.columns([1, 2, 1])
@@ -422,9 +431,8 @@ def open_edit_popup(note_id, old_title, old_content, old_filename, old_labels, n
             init_draw = json.loads(drawing_data) if drawing_data else None
             canvas_result = st_canvas(fill_color="rgba(0,0,0,0)", stroke_width=stroke_width, stroke_color=final_color, background_color="#FFFFFF", initial_drawing=init_draw, update_streamlit=True, height=450, drawing_mode="freedraw", key=f"canvas_edit_{note_id}")
         else:
-            # UNIQUE KEY FOR EDIT FORM TO PREVENT CRASHES
             unique_key = f"quill_edit_{note_id}_{st.session_state.edit_trigger}"
-            new_content = st_quill(value=old_content, toolbar=toolbar_config, html=True, key=unique_key)
+            new_content = st_quill(value=safe_content, toolbar=toolbar_config, html=True, key=unique_key)
             st.divider()
             new_file = st.file_uploader("Replace File", type=['pdf', 'docx', 'txt', 'mp3', 'wav', 'jpg', 'png'])
 
@@ -453,7 +461,6 @@ def open_edit_popup(note_id, old_title, old_content, old_filename, old_labels, n
             collection.update_one({"_id": note_id}, {"$set": update_data})
             st.session_state.edit_trigger += 1 
             st.session_state.cal_edit_id = None
-            st.session_state.cal_copy_id = None
             st.rerun()
 
     if old_filename and note_type != "disegno":
@@ -461,6 +468,28 @@ def open_edit_popup(note_id, old_title, old_content, old_filename, old_labels, n
         if st.button("Remove file", key=f"rm_file_{note_id}"):
             collection.update_one({"_id": note_id}, {"$set": {"file_name": None, "file_data": None}})
             st.rerun()
+
+@st.dialog("Move Note", width="large")
+def open_move_popup(current_note_id):
+    st.write("Select the note you want to swap positions with:")
+    candidates = list(collection.find({"deleted": {"$ne": True}, "_id": {"$ne": current_note_id}, "calendar_date": None}).sort("custom_order", 1))
+    if not candidates: st.warning("No notes available."); return
+    options = {n["_id"]: f"{'📌' if n.get('pinned') else '📄'} {n['titolo']}" for n in candidates}
+    selected_target_id = st.selectbox("Swap with:", options.keys(), format_func=lambda x: options[x])
+    
+    c_swap, c_insert = st.columns(2)
+    if c_swap.button("Swap Positions ⇄", use_container_width=True):
+        n1 = collection.find_one({"_id": current_note_id})
+        n2 = collection.find_one({"_id": selected_target_id})
+        collection.update_one({"_id": current_note_id}, {"$set": {"custom_order": n2["custom_order"], "pinned": n2["pinned"]}})
+        collection.update_one({"_id": selected_target_id}, {"$set": {"custom_order": n1["custom_order"], "pinned": n1["pinned"]}})
+        st.rerun()
+    if c_insert.button("Insert Before ⬆", use_container_width=True):
+        n2 = collection.find_one({"_id": selected_target_id})
+        t_order = n2["custom_order"]
+        collection.update_one({"_id": current_note_id}, {"$set": {"custom_order": t_order, "pinned": n2["pinned"]}})
+        collection.update_many({"custom_order": {"$gte": t_order}, "_id": {"$ne": current_note_id}, "calendar_date": None}, {"$inc": {"custom_order": 1}})
+        st.rerun()
 
 @st.dialog("Trash", width="large")
 def open_trash():
@@ -524,6 +553,7 @@ tab_dash, tab_cal = st.tabs(["DASHBOARD", "CALENDAR"])
 
 # ================= DASHBOARD TAB =================
 with tab_dash:
+    # CREATE NOTE
     expander_label = f"+ Create New Note{'\u200b' * st.session_state.reset_counter}"
     with st.expander(expander_label, expanded=False):
         render_create_note_form("dash_create") 
@@ -633,9 +663,6 @@ with tab_cal:
         if sel_year != st.session_state.cal_year:
             st.session_state.cal_year = sel_year
             st.rerun()
-            
-    # DARK SEPARATOR LINE
-    st.markdown("<hr style='margin: 15px 0; border-top: 2px solid #888; opacity: 1;'>", unsafe_allow_html=True)
 
     num_days = calendar.monthrange(st.session_state.cal_year, st.session_state.cal_month)[1]
     
@@ -673,6 +700,8 @@ with tab_cal:
         if d not in notes_by_day: notes_by_day[d] = []
         notes_by_day[d].append(n)
 
+    st.write("---")
+    
     for day in range(1, num_days + 1):
         date_str = f"{st.session_state.cal_year}-{st.session_state.cal_month:02d}-{day:02d}"
         dt = date(st.session_state.cal_year, st.session_state.cal_month, day)
@@ -718,6 +747,7 @@ with tab_cal:
                     extra_icons = ""
                     if note.get("labels"): extra_icons += "🏷️ "
                     if note.get("file_name") and note.get("tipo") != "disegno": extra_icons += "🖇️ "
+                    # REMOVED LINK ICON AS REQUESTED
                     
                     st.markdown(f"**{extra_icons}{icon_art}{title_txt}**")
                     
@@ -733,8 +763,8 @@ with tab_cal:
                     if note.get("file_name") and note.get("tipo") != "disegno":
                         st.download_button("Download", data=note["file_data"], file_name=note["file_name"], key=f"dlc_{note['_id']}")
                     
-                    # BUTTONS: EDIT | COPY | DELETE (Compact & Close)
-                    c1, c2, c3, c_space = st.columns([1, 1, 1, 5])
+                    # CALENDAR BUTTONS (Closer, Compact)
+                    c1, c2, c3, c_space = st.columns([1, 1, 1, 5]) # Buttons grouped on left
                     
                     if c1.button("✎ Edit", key=f"ced_{note['_id']}"):
                         draw_data = note.get("drawing_json", None)
@@ -779,7 +809,7 @@ with tab_cal:
                     st.rerun()
         else:
             with c_add:
-                if st.button("➕ Add Note", key=f"add_{date_str}"):
+                if st.button("+ Add Note", key=f"add_{date_str}"):
                     st.session_state.cal_create_date = date_str
                     st.rerun()
         

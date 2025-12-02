@@ -8,7 +8,7 @@ import bson.binary
 import json
 
 # --- 1. CONFIGURAZIONE PAGINA ---
-st.set_page_config(page_title="DOR Notes", page_icon="📝", layout="wide")
+st.set_page_config(page_title="DOR NOTES", page_icon="📄", layout="wide")
 
 # --- 2. GESTIONE STATO & PREFERENZE ---
 if 'text_size' not in st.session_state: st.session_state.text_size = "16px"
@@ -132,10 +132,8 @@ toolbar_config = [
 # --- 7. DIALOGHI (TUTTO IN ITALIANO) ---
 
 # Popup Impostazioni
-@st.dialog("Impostazioni ⚙️")
+@st.dialog("Impostazioni")
 def apri_impostazioni():
-    st.subheader("🛠️ Gestione Dati")
-    
     st.write("**Backup Note**")
     tutte_le_note = list(collection.find({}))
     json_dati = converti_note_per_json(tutte_le_note)
@@ -157,7 +155,7 @@ def apri_impostazioni():
     st.divider()
     
     st.write("**Manutenzione**")
-    if st.button("🧹 Pulisci Cestino (>30 gg)"):
+    if st.button("Pulisci Cestino (>30 gg)"):
         data_limite = datetime.now() - timedelta(days=30)
         result = collection.delete_many({
             "deleted": True,
@@ -172,7 +170,7 @@ def apri_popup_modifica(nota_id, titolo_vecchio, contenuto_vecchio):
     nuovo_titolo = st.text_input("Titolo", value=titolo_vecchio)
     nuovo_contenuto = st_quill(value=contenuto_vecchio, toolbar=toolbar_config, html=True, key=f"edit_{nota_id}")
     
-    if st.button("💾 Salva Modifiche", type="primary"):
+    if st.button("Salva Modifiche", type="primary"):
         collection.update_one(
             {"_id": nota_id},
             {"$set": {"titolo": nuovo_titolo, "contenuto": nuovo_contenuto, "data": datetime.now()}}
@@ -180,13 +178,13 @@ def apri_popup_modifica(nota_id, titolo_vecchio, contenuto_vecchio):
         st.rerun()
 
 # Popup Cestino
-@st.dialog("Cestino 🗑️", width="large")
+@st.dialog("Cestino", width="large")
 def apri_cestino():
     note_cestino = list(collection.find({"deleted": True}).sort("data", -1))
     col1, col2 = st.columns([3, 1])
     col1.write(f"Note nel cestino: {len(note_cestino)}")
     if note_cestino:
-        if col2.button("🔥 Svuota tutto"):
+        if col2.button("Svuota tutto"):
             collection.delete_many({"deleted": True})
             st.rerun()
         st.divider()
@@ -232,7 +230,7 @@ with head_col3:
 st.markdown("---") # Linea divisoria sottile subito sotto l'header
 
 # 2. SEZIONE CREA (SOLO CREAZIONE)
-with st.expander("✍️ Crea nuova nota"):
+with st.expander("Crea nuova nota"):
     titolo_input = st.text_input("Titolo", key=f"tit_{st.session_state.editor_key}")
     contenuto_input = st_quill(
         placeholder="Scrivi qui i tuoi pensieri...",
@@ -240,10 +238,9 @@ with st.expander("✍️ Crea nuova nota"):
         toolbar=toolbar_config,
         key=f"quill_{st.session_state.editor_key}"
     )
-    st.markdown("**📎 Allegati**")
     uploaded_file = st.file_uploader("Carica File", type=['pdf', 'docx', 'txt', 'mp3', 'wav', 'jpg', 'png'], key=f"file_{st.session_state.editor_key}")
     
-    if st.button("Salva Nota 💾"):
+    if st.button("Salva Nota"):
         if titolo_input and contenuto_input:
             doc = {
                 "titolo": titolo_input,
@@ -258,7 +255,7 @@ with st.expander("✍️ Crea nuova nota"):
             collection.insert_one(doc)
             st.toast("Nota salvata!", icon="✅")
             st.session_state.editor_key = str(uuid.uuid4())
-            time.sleep(0.5)
+            time.sleep(0.2)
             st.rerun()
         else:
             st.warning("Inserisci titolo e contenuto.")
@@ -303,15 +300,15 @@ else:
                 # PULSANTI (TRADOTTI E RIORDINATI)
                 c_mod, c_pin, c_del = st.columns(3)
                 
-                if c_mod.button("✏️ Modifica", key=f"mod_{nota['_id']}"):
+                if c_mod.button("Modifica", key=f"mod_{nota['_id']}"):
                     apri_popup_modifica(nota['_id'], nota['titolo'], nota['contenuto'])
                 
                 # Logica Pin/Unpin tradotta
-                label_pin = "Sblocca" if is_pinned else "📌 Fissa"
+                label_pin = "Sblocca" if is_pinned else "Fissa"
                 if c_pin.button(label_pin, key=f"pin_{nota['_id']}"):
                      new_state = not is_pinned
                      collection.update_one({"_id": nota['_id']}, {"$set": {"pinned": new_state}})
                      st.rerun()
 
-                if c_del.button("🗑️ Elimina", key=f"del_{nota['_id']}"):
+                if c_del.button("Elimina", key=f"del_{nota['_id']}"):
                     conferma_eliminazione(nota['_id'])

@@ -97,27 +97,48 @@ st.markdown(f"""
         text-transform: uppercase;
     }}
 
-    /* BLACK BORDER FIX (ALL INPUTS) */
-    div[data-baseweb="input"] {{ border-color: #e0e0e0 !important; border-radius: 8px !important; }}
-    div[data-baseweb="input"]:focus-within {{ border: 1px solid #000000 !important; box-shadow: none !important; }}
+    /* --- BLACK BORDER FIXES --- */
+
+    /* 1. Generic Inputs (Text, etc.) */
+    div[data-baseweb="input"] {{ 
+        border-color: #e0e0e0 !important; 
+        border-radius: 8px !important; 
+    }}
+    div[data-baseweb="input"]:focus-within {{ 
+        border: 1px solid #000000 !important; 
+        box-shadow: none !important; 
+    }}
     
-    div[data-baseweb="textarea"] {{ border-color: #e0e0e0 !important; border-radius: 8px !important; }}
-    div[data-baseweb="textarea"]:focus-within {{ border: 1px solid #000000 !important; box-shadow: none !important; }}
+    /* 2. Text Areas */
+    div[data-baseweb="textarea"] {{ 
+        border-color: #e0e0e0 !important; 
+        border-radius: 8px !important; 
+    }}
+    div[data-baseweb="textarea"]:focus-within {{ 
+        border: 1px solid #000000 !important; 
+        box-shadow: none !important; 
+    }}
     
-    /* SPECIFIC FIX FOR NUMBER INPUTS (Canvas Size) */
+    /* 3. NUMBER INPUTS (Larghezza/Altezza foglio) - FIX SPECIFICO */
+    /* Targettiamo specificamente il contenitore interno dell'input numerico */
     div[data-testid="stNumberInput"] div[data-baseweb="input"] {{
         border-color: #e0e0e0 !important;
         border-radius: 8px !important;
     }}
+    /* Quando è attivo/focus, forza bordo nero e rimuove ombra rossa */
     div[data-testid="stNumberInput"] div[data-baseweb="input"]:focus-within {{
         border: 1px solid #000000 !important;
         box-shadow: none !important;
+        outline: none !important;
     }}
+    /* Rimuove l'outline dal campo di input HTML vero e proprio */
     div[data-testid="stNumberInput"] input:focus {{
         outline: none !important;
         box-shadow: none !important;
+        border-color: transparent !important;
     }}
 
+    /* Generic Focus override */
     input:focus {{ outline: none !important; border-color: #000000 !important; }}
 
     /* ANIMATION */
@@ -278,7 +299,6 @@ def open_edit_popup(note_id, old_title, old_content, old_filename, old_labels, n
             with c_tool:
                 tool = st.radio("Tool", ["Pen", "Pencil", "Highlighter", "Eraser"], horizontal=True, key=f"d_t_{note_id}")
             with c_width:
-                # MODIFICA 2: Renamed Width to Stroke thickness
                 stroke_width = st.slider("Stroke thickness", 1, 30, 2, key=f"d_w_{note_id}")
             
             if tool == "Eraser": base_color = "#ffffff"
@@ -331,7 +351,6 @@ def open_edit_popup(note_id, old_title, old_content, old_filename, old_labels, n
                     img.save(buf, format='PNG')
                     val_bytes = buf.getvalue()
                     
-                    # MODIFICA 1: Check length > 100 to ensure valid PNG
                     if len(val_bytes) > 100:
                         update_data["file_data"] = bson.binary.Binary(val_bytes)
                         update_data["file_name"] = "drawing.png"
@@ -395,7 +414,6 @@ def open_trash():
         for note in trash_notes:
             with st.expander(f"🗑 {note['titolo']}"):
                 if note.get("tipo") == "disegno" and note.get("file_data"):
-                    # Check for valid image data in trash too
                     if len(note["file_data"]) > 100:
                         st.image(note["file_data"])
                 else:
@@ -493,7 +511,6 @@ with st.expander("Create New Note", expanded=expander_state):
         with c_tool:
             tool = st.radio("Tool", ["Pen", "Pencil", "Highlighter", "Eraser"], horizontal=True, key=f"dt_{st.session_state.create_key}")
         with c_width:
-            # MODIFICA 2: Renamed Width to Stroke thickness
             stroke_width = st.slider("Stroke thickness", 1, 30, 2, key=f"dw_{st.session_state.create_key}")
         
         if tool == "Eraser": base_color = "#ffffff"
@@ -533,7 +550,6 @@ with st.expander("Create New Note", expanded=expander_state):
                 img.save(buf, format='PNG')
                 val_bytes = buf.getvalue() # Get bytes
                 
-                # MODIFICA 1: Stronger check for valid image data (> 100 bytes)
                 if len(val_bytes) > 100: 
                     doc = {
                         "titolo": title_input,
@@ -600,8 +616,6 @@ def render_notes_grid(note_list):
                     st.write("")
                 
                 if note.get("tipo") == "disegno" and note.get("file_data"):
-                    # MODIFICA 1: Display check (avoid broken icon 0)
-                    # A valid PNG is almost certainly > 100 bytes.
                     if len(note["file_data"]) > 100:
                         st.image(note["file_data"], output_format="PNG")
                 else:

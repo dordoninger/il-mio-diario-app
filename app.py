@@ -13,7 +13,7 @@ st.set_page_config(page_title="DOR NOTES", page_icon="📄", layout="wide")
 
 # --- 2. STATE MANAGEMENT ---
 if 'text_size' not in st.session_state: st.session_state.text_size = "16px"
-# Trigger to force updates
+# Trigger to force updates (CRUCIALE per il salvataggio corretto)
 if 'edit_trigger' not in st.session_state: st.session_state.edit_trigger = 0
 
 # --- 3. CSS AESTHETIC (FIXED: NO RED BORDERS) ---
@@ -141,7 +141,7 @@ toolbar_config = [
     [{ 'color': [] }, { 'background': [] }],
     [{ 'font': [] }],
     [{ 'align': [] }],
-    ['image', 'formula'], # Formula button is here
+    ['image', 'formula'],
     ['link'],
 ]
 
@@ -166,10 +166,9 @@ def open_settings():
         res = collection.delete_many({"deleted": True, "data": {"$lt": limit}})
         if res.deleted_count > 0: st.success(f"Cleaned {res.deleted_count} items.")
 
-# --- EDIT POPUP (AUTOMATIC CLEAN MODE) ---
+# --- EDIT POPUP (AUTOMATIC CLEAN MODE - SAVING FIXED) ---
 @st.dialog("Edit Note", width="large")
 def open_edit_popup(note_id):
-    # 1. Recupera la nota dal DB
     note = collection.find_one({"_id": note_id})
     if not note:
         st.error("Note not found.")
@@ -180,30 +179,24 @@ def open_edit_popup(note_id):
     raw_content = note.get('contenuto', '')
     old_filename = note.get('file_name', None)
 
-    # 2. PULIZIA AUTOMATICA FORMULE (BUG 3 SOLVED)
-    # Questa regex cerca il tag formula completo e lo sostituisce con un segnaposto testuale.
-    # [^>]* serve a ignorare eventuali attributi extra che creavano il problema della duplicazione.
-    # .*? consuma tutto fino alla chiusura dello span.
-    
+    # PULIZIA AUTOMATICA FORMULE
+    # Trasforma i tag HTML complessi in testo semplice per evitare crash
     clean_content = re.sub(
         r'<span class="ql-formula"[^>]*data-value="([^"]+)"[^>]*>.*?</span>', 
         r' **(Formula: \1)** ', 
         raw_content,
-        flags=re.DOTALL # Assicura che funzioni anche se ci sono "a capo" strani
+        flags=re.DOTALL
     )
 
     st.markdown("### Edit Content")
     
-    # 3. FORM DI MODIFICA
     with st.form(key=f"edit_form_{note_id}"):
         new_title = st.text_input("Title", value=old_title)
         
-        # Editor Visuale: Qui vedrai "**(Formula: x^2)**" come testo.
-        # PUOI CANCELLARLO E INSERIRE UNA NUOVA FORMULA DALLA TOOLBAR.
-        unique_key = f"quill_edit_{note_id}_{int(time.time())}"
+        # FIX SALVATAGGIO: Usiamo edit_trigger come chiave.
+        # Questo assicura che l'editor non si resetti mentre scrivi o clicchi salva.
+        unique_key = f"quill_edit_{note_id}_{st.session_state.edit_trigger}"
         new_content = st_quill(value=clean_content, toolbar=toolbar_config, html=True, key=unique_key)
-        
-        st.caption("ℹ️ Le formule esistenti sono mostrate come testo **(Formula: ...)** per evitare errori. Cancellale e usa il tasto 'f(x)' nella toolbar per inserirne di nuove.")
         
         st.divider()
         st.markdown("### Attachments")
@@ -222,6 +215,10 @@ def open_edit_popup(note_id):
                 update_data["file_data"] = bson.binary.Binary(new_file.getvalue())
             
             collection.update_one({"_id": note_id}, {"$set": update_data})
+            
+            # Incrementiamo il trigger SOLO dopo un salvataggio riuscito.
+            # Questo dice a Streamlit: "Ora puoi ricaricare l'editor pulito per la prossima volta"
+            st.session_state.edit_trigger += 1
             st.rerun()
 
     if old_filename:

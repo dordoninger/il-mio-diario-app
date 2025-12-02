@@ -11,7 +11,7 @@ import json
 st.set_page_config(page_title="DBJ Notes", page_icon="📝", layout="wide")
 
 # --- 2. GESTIONE STATO & PREFERENZE ---
-if 'text_size' not in st.session_state: st.session_state.text_size = "16px" # Default
+if 'text_size' not in st.session_state: st.session_state.text_size = "16px"
 
 # --- 3. CSS DINAMICO ---
 st.markdown(f"""
@@ -36,7 +36,7 @@ st.markdown(f"""
     }}
     .streamlit-expanderContent {{
         border-top: 1px solid #f0f0f0;
-        font-size: {st.session_state.text_size}; /* Dimensione Dinamica */
+        font-size: {st.session_state.text_size};
     }}
     
     /* Contenuto Quill (Lettura) */
@@ -92,13 +92,12 @@ collection = db.note
 
 # --- 5. FUNZIONI UTILITÀ (Backup) ---
 def converti_note_per_json(note_list):
-    # Converte i dati MongoDB (ObjectId, DateTime) in stringhe per il JSON
     export_list = []
     for nota in note_list:
         nota_export = nota.copy()
         nota_export['_id'] = str(nota['_id'])
         nota_export['data'] = nota['data'].strftime("%Y-%m-%d %H:%M:%S")
-        if 'file_data' in nota_export: del nota_export['file_data'] # Non esportiamo i binari nel JSON testo
+        if 'file_data' in nota_export: del nota_export['file_data']
         export_list.append(nota_export)
     return json.dumps(export_list, indent=4)
 
@@ -116,7 +115,7 @@ toolbar_config = [
 
 # --- 7. DIALOGHI (POPUP) ---
 
-# Popup Impostazioni (COMPLETO)
+# Popup Impostazioni
 @st.dialog("Impostazioni ⚙️")
 def apri_impostazioni():
     st.subheader("🛠️ Gestione Dati")
@@ -229,7 +228,7 @@ with col_crea:
                     "data": datetime.now(),
                     "tipo": "testo_ricco",
                     "deleted": False,
-                    "pinned": False, # Campo per il Fissaggio in alto
+                    "pinned": False,
                     "file_name": uploaded_file.name if uploaded_file else None,
                     "file_data": bson.binary.Binary(uploaded_file.getvalue()) if uploaded_file else None
                 }
@@ -261,7 +260,6 @@ filtro = {"deleted": {"$ne": True}}
 if query:
     filtro = {"$and": [{"deleted": {"$ne": True}}, {"$or": [{"titolo": {"$regex": query, "$options": "i"}}, {"contenuto": {"$regex": query, "$options": "i"}}]}]}
 
-# ORDINAMENTO: Prima le Pinned (True > False), poi per Data (Recente > Vecchia)
 note_attive = list(collection.find(filtro).sort([("pinned", -1), ("data", -1)]))
 
 if not note_attive:
@@ -278,25 +276,31 @@ else:
             # Tendina Nota
             with st.expander(f"{icona_pin}{icona_clip}📄 {nota['titolo']}"):
                 
-                # TASTO FISSAGGIO (PIN) IN EVIDENZA
-                col_pin, _ = st.columns([1, 3])
-                label_pin = "Sblocca" if is_pinned else "📌 Fissa in alto"
-                if col_pin.button(label_pin, key=f"pin_{nota['_id']}", help="Metti in cima alla lista"):
-                    new_state = not is_pinned
-                    collection.update_one({"_id": nota['_id']}, {"$set": {"pinned": new_state}})
-                    st.rerun()
-
-                # Contenuto (con classe CSS per dimensione font)
+                # Contenuto Nota
                 st.markdown(f"<div class='quill-read-content'>{nota['contenuto']}</div>", unsafe_allow_html=True)
                 
+                # Allegato
                 if nota.get("file_name"):
                     st.markdown("---")
                     st.caption(f"File: {nota['file_name']}")
                     st.download_button("⬇️ Scarica", data=nota["file_data"], file_name=nota["file_name"])
                 
                 st.markdown("---")
-                b1, b2 = st.columns(2)
-                if b1.button("✏️ Modifica", key=f"mod_{nota['_id']}"):
+                
+                # PULSANTI AZIONE (3 COLONNE IN BASSO)
+                col_mod, col_pin, col_del = st.columns(3)
+                
+                # 1. Modifica
+                if col_mod.button("✏️ Modifica", key=f"mod_{nota['_id']}"):
                     apri_popup_modifica(nota['_id'], nota['titolo'], nota['contenuto'])
-                if b2.button("🗑️ Elimina", key=f"del_{nota['_id']}"):
+                
+                # 2. Fissa / Sblocca
+                label_pin = "Sblocca" if is_pinned else "📌 Fissa"
+                if col_pin.button(label_pin, key=f"pin_{nota['_id']}"):
+                     new_state = not is_pinned
+                     collection.update_one({"_id": nota['_id']}, {"$set": {"pinned": new_state}})
+                     st.rerun()
+
+                # 3. Elimina
+                if col_del.button("🗑️ Elimina", key=f"del_{nota['_id']}"):
                     conferma_eliminazione(nota['_id'])

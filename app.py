@@ -14,7 +14,7 @@ st.set_page_config(page_title="DOR NOTES", page_icon="📄", layout="wide")
 # --- 2. STATE MANAGEMENT ---
 if 'text_size' not in st.session_state: st.session_state.text_size = "16px"
 
-# --- 3. CSS AESTHETIC ---
+# --- 3. CSS AESTHETIC (RESTORED BLACK BORDERS) ---
 st.markdown(f"""
 <style>
     /* TITLE STYLE */
@@ -59,9 +59,19 @@ st.markdown(f"""
         cursor: pointer !important;
     }}
 
-    /* --- INPUTS FOCUS FIX (SAFE VERSION) --- */
-    /* We explicitly target Streamlit Input Widgets to avoid breaking Quill's internal tooltips */
-    .stTextInput input:focus, .stTextArea textarea:focus {{
+    /* --- INPUTS FOCUS FIX (BLACK BORDER) --- */
+    /* Target specifically the input box elements to override Streamlit Red */
+    .stTextInput > div > div {{
+        border-color: #e0e0e0;
+    }}
+    .stTextInput > div > div:focus-within {{
+        border-color: #000000 !important;
+        box-shadow: 0 0 0 1px #000000 !important;
+    }}
+    .stTextArea > div > div {{
+        border-color: #e0e0e0;
+    }}
+    .stTextArea > div > div:focus-within {{
         border-color: #000000 !important;
         box-shadow: 0 0 0 1px #000000 !important;
     }}
@@ -126,7 +136,6 @@ def convert_notes_to_json(note_list):
 
 def sanitize_links(html_content):
     if not html_content: return ""
-    # Forces links to open in new tab (Read Mode Only)
     return re.sub(r'<a href="(.*?)"', r'<a href="\1" target="_blank" rel="noopener noreferrer"', html_content)
 
 # --- 6. TOOLBAR CONFIG ---
@@ -138,7 +147,8 @@ toolbar_config = [
     [{ 'color': [] }, { 'background': [] }],
     [{ 'font': [] }],
     [{ 'align': [] }],
-    ['link', 'image', 'formula'],
+    ['image', 'formula'],
+    ['link'],
 ]
 
 # --- 7. POPUPS (DIALOGS) ---
@@ -166,22 +176,22 @@ def open_settings():
 def open_edit_popup(note_id, old_title, old_content, old_filename):
     st.markdown("### Edit Content")
     
-    # Use session state to handle values robustly
+    # Session state for title to avoid reload issues
     if f"edit_title_{note_id}" not in st.session_state:
         st.session_state[f"edit_title_{note_id}"] = old_title
     
     new_title = st.text_input("Title", key=f"edit_title_{note_id}")
     
-    # KEY FIX: Generate a completely new key for the editor every time
-    # This prevents the "render undefined" error by forcing a fresh load
-    unique_key = f"quill_edit_{note_id}_{uuid.uuid4()}"
+    # --- BUG FIX: STABLE KEY ---
+    # We use a FIXED key based on the Note ID. 
+    # This prevents the editor from re-mounting on every keystroke/interaction.
+    stable_key = f"quill_editor_fixed_{note_id}"
     
-    st.write("Edit text below:")
     new_content = st_quill(
         value=old_content, 
         toolbar=toolbar_config, 
         html=True, 
-        key=unique_key
+        key=stable_key
     )
     
     st.divider()
@@ -207,6 +217,9 @@ def open_edit_popup(note_id, old_title, old_content, old_filename):
             update_data["file_data"] = bson.binary.Binary(new_file.getvalue())
             
         collection.update_one({"_id": note_id}, {"$set": update_data})
+        # Clear session state key to allow fresh load next time
+        if f"edit_title_{note_id}" in st.session_state:
+            del st.session_state[f"edit_title_{note_id}"]
         st.rerun()
 
 @st.dialog("Trash", width="large")
@@ -302,7 +315,6 @@ else:
             icon_pin = "📌 " if is_pinned else ""
             
             with st.expander(f"{icon_pin}{icon_clip} {note['titolo']}"):
-                # SANITIZE LINKS (Add target="_blank" only for reading)
                 safe_content = sanitize_links(note['contenuto'])
                 st.markdown(f"<div class='quill-read-content'>{safe_content}</div>", unsafe_allow_html=True)
                 

@@ -97,44 +97,36 @@ st.markdown(f"""
         text-transform: uppercase;
     }}
 
-    /* --- GLOBAL INPUT FIX (ELIMINA ROSSO OVUNQUE) --- */
+    /* --- FIX DEFINITIVO BORDI ROSSI (Aggressivo) --- */
 
-    /* 1. Reset generale per Input Testo, Numeri e Textarea */
-    div[data-baseweb="input"], 
-    div[data-baseweb="base-input"], 
-    div[data-baseweb="textarea"] {{
-        border: 1px solid #e0e0e0 !important;
-        border-radius: 8px !important;
-        background-color: #ffffff !important;
+    /* 1. Definizione dello stato normale (non attivo) per tutti i wrapper di input */
+    div[data-baseweb="input"],
+    div[data-baseweb="base-input"],
+    div[data-baseweb="textarea"],
+    div[data-testid="stNumberInput"] > div:first-child {{
+         border-radius: 8px !important;
+         border: 1px solid #e0e0e0 !important;
+         background-color: #ffffff !important;
+         box-shadow: none !important;
     }}
 
-    /* 2. Stato FOCUS (Quando clicchi): Bordo Nero e NO OMBRA ROSSA */
+    /* 2. Definizione dello stato FOCUS (attivo) */
+    /* Usa :focus-within per applicare lo stile al wrapper quando l'input interno è selezionato */
     div[data-baseweb="input"]:focus-within,
-    div[data-baseweb="base-input"]:focus-within, 
-    div[data-baseweb="textarea"]:focus-within {{
-        border: 1px solid #000000 !important;
-        box-shadow: none !important; /* Questo rimuove l'alone rosso */
-        outline: none !important;
-    }}
-
-    /* 3. Fix specifico per i Number Input (Grandezza Foglio) */
-    /* Rimuove bordi e ombre dagli elementi interni per evitare doppi bordi */
-    div[data-testid="stNumberInput"] input {{
-        box-shadow: none !important;
-        outline: none !important;
-    }}
-    
-    /* Forza il contenitore principale del numero ad essere nero sul focus */
+    div[data-baseweb="base-input"]:focus-within,
+    div[data-baseweb="textarea"]:focus-within,
     div[data-testid="stNumberInput"] > div:first-child:focus-within {{
-        border-color: #000000 !important;
-        box-shadow: none !important;
+        border: 1px solid #000000 !important;  /* Forza bordo nero */
+        box-shadow: none !important;          /* RIMUOVE L'OMBRA ROSSA */
+        outline: none !important;
     }}
 
-    /* Generic Focus override di sicurezza */
-    input:focus {{ 
-        outline: none !important; 
-        border-color: #000000 !important; 
+    /* 3. Pulizia degli elementi input nativi interni */
+    /* Assicura che il campo di input HTML reale non abbia il proprio outline/bordo nativo */
+    input:focus, textarea:focus {{
+        outline: none !important;
         box-shadow: none !important;
+        border-color: transparent !important; /* Nasconde il bordo interno */
     }}
 
     /* ANIMATION */

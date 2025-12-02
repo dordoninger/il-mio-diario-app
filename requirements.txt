@@ -1,2 +1,3 @@
 pymongo
 streamlit-quill
+streamlit-drawable-canvas

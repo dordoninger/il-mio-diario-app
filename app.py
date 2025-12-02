@@ -40,29 +40,29 @@ st.markdown(f"""
     
     /* Target the Expander Container (The Note Card) */
     .streamlit-expander {{
-        border-radius: 12px !important; /* ROUNDED CORNERS */
+        border-radius: 12px !important;
         border: 1px solid #e0e0e0 !important;
-        box-shadow: 0 2px 5px rgba(0,0,0,0.03); /* Subtle Shadow */
+        box-shadow: 0 2px 5px rgba(0,0,0,0.03);
         background-color: white;
         margin-bottom: 10px;
     }}
     
-    /* Make headers shorter (less padding) */
+    /* Make headers shorter */
     .streamlit-expanderHeader {{
         font-weight: 600;
         font-size: 1.0rem;
         color: #333;
         background-color: #fff;
-        border-radius: 12px 12px 0 0; /* Rounded top */
-        padding-top: 0.5rem !important;    /* SHORTER */
-        padding-bottom: 0.5rem !important; /* SHORTER */
+        border-radius: 12px 12px 0 0;
+        padding-top: 0.5rem !important;
+        padding-bottom: 0.5rem !important;
     }}
     
     .streamlit-expanderContent {{
         border-top: 1px solid #f8f8f8;
         font-size: {st.session_state.text_size};
         padding-top: 10px;
-        border-radius: 0 0 12px 12px; /* Rounded bottom */
+        border-radius: 0 0 12px 12px;
     }}
     
     /* READ CONTENT STYLE */
@@ -120,7 +120,7 @@ st.markdown(f"""
     
     div[data-testid="column"] {{
         display: flex;
-        align-items: center; /* Vertically align items in the row */
+        align-items: center;
     }}
     
     /* PINNED HEADER */
@@ -212,8 +212,6 @@ toolbar_config = [
 @st.dialog("Settings")
 def open_settings():
     st.write("**Appearance**")
-    
-    # GRID COLUMNS SLIDER
     cols_opt = st.slider("Grid Columns", min_value=1, max_value=5, value=st.session_state.grid_cols)
     if cols_opt != st.session_state.grid_cols:
         st.session_state.grid_cols = cols_opt
@@ -362,53 +360,46 @@ with head_col3:
 
 st.markdown("---") 
 
-# --- SINGLE LINE: CREATE & SEARCH ---
-# Layout: 60% Create Note, 40% Search Bar
-c_create, c_search = st.columns([6, 4])
+# --- CREATE NOTE (STACKED) ---
+expander_label = f"Create New Note{'\u200b' * st.session_state.reset_counter}"
+with st.expander(expander_label, expanded=False):
+    with st.form("create_note_form", clear_on_submit=True):
+        title_input = st.text_input("Title")
+        labels_input = st.text_input("Labels (comma separated)", placeholder="Important, Work...")
+        content_input = st_quill(placeholder="Write here...", html=True, toolbar=toolbar_config, key=f"quill_create_{st.session_state.create_key}")
+        uploaded_file = st.file_uploader("Attachment", type=['pdf', 'docx', 'txt', 'mp3', 'wav', 'jpg', 'png'])
+        submitted_create = st.form_submit_button("Save Note")
+        
+        if submitted_create:
+            if title_input and content_input:
+                labels_list = [tag.strip() for tag in labels_input.split(",") if tag.strip()]
+                
+                last_note = collection.find_one(sort=[("custom_order", -1)])
+                new_order = (last_note["custom_order"] + 1) if last_note and "custom_order" in last_note else 0
+                
+                doc = {
+                    "titolo": title_input,
+                    "contenuto": content_input,
+                    "labels": labels_list,
+                    "data": datetime.now(),
+                    "custom_order": new_order, 
+                    "tipo": "testo_ricco",
+                    "deleted": False, "pinned": False,
+                    "file_name": uploaded_file.name if uploaded_file else None,
+                    "file_data": bson.binary.Binary(uploaded_file.getvalue()) if uploaded_file else None
+                }
+                collection.insert_one(doc)
+                st.toast("Saved!", icon="✅")
+                st.session_state.create_key = str(uuid.uuid4())
+                st.session_state.reset_counter += 1
+                st.rerun()
+            else:
+                st.warning("Title and content required.")
 
-with c_create:
-    expander_label = f"Create New Note{'\u200b' * st.session_state.reset_counter}"
-    with st.expander(expander_label, expanded=False):
-        with st.form("create_note_form", clear_on_submit=True):
-            title_input = st.text_input("Title")
-            labels_input = st.text_input("Labels (comma separated)", placeholder="Important, Work...")
-            content_input = st_quill(placeholder="Write here...", html=True, toolbar=toolbar_config, key=f"quill_create_{st.session_state.create_key}")
-            uploaded_file = st.file_uploader("Attachment", type=['pdf', 'docx', 'txt', 'mp3', 'wav', 'jpg', 'png'])
-            submitted_create = st.form_submit_button("Save Note")
-            
-            if submitted_create:
-                if title_input and content_input:
-                    labels_list = [tag.strip() for tag in labels_input.split(",") if tag.strip()]
-                    
-                    last_note = collection.find_one(sort=[("custom_order", -1)])
-                    new_order = (last_note["custom_order"] + 1) if last_note and "custom_order" in last_note else 0
-                    
-                    doc = {
-                        "titolo": title_input,
-                        "contenuto": content_input,
-                        "labels": labels_list,
-                        "data": datetime.now(),
-                        "custom_order": new_order, 
-                        "tipo": "testo_ricco",
-                        "deleted": False, "pinned": False,
-                        "file_name": uploaded_file.name if uploaded_file else None,
-                        "file_data": bson.binary.Binary(uploaded_file.getvalue()) if uploaded_file else None
-                    }
-                    collection.insert_one(doc)
-                    st.toast("Saved!", icon="✅")
-                    st.session_state.create_key = str(uuid.uuid4())
-                    st.session_state.reset_counter += 1
-                    st.rerun()
-                else:
-                    st.warning("Title and content required.")
+# --- SEARCH BAR (BELOW CREATE) ---
+st.write("") # Small gap
+query = st.text_input("🔍", placeholder="Search...", label_visibility="collapsed")
 
-with c_search:
-    # Use empty container to align vertically if needed, mostly fine as is
-    query = st.text_input("🔍", placeholder="Search...", label_visibility="collapsed")
-
-st.write("") # Spacer
-
-# FILTER LOGIC
 filter_query = {"deleted": {"$ne": True}}
 if query:
     filter_query = {
@@ -462,7 +453,7 @@ def render_notes_grid(note_list):
                 if c_mod.button("✎", key=f"mod_{note['_id']}", help="Edit"):
                     open_edit_popup(note['_id'], note['titolo'], note['contenuto'], note.get("file_name"), labels)
                 
-                label_pin = "Unpin" if is_pinned else "⚲"
+                label_pin = "⚲" # Same icon for both states
                 help_text = "Unpin" if is_pinned else "Pin"
                 if c_pin.button(label_pin, key=f"pin_{note['_id']}", help=help_text):
                      collection.update_one({"_id": note['_id']}, {"$set": {"pinned": not is_pinned}})

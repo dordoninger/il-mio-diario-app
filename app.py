@@ -8,59 +8,75 @@ import bson.binary
 import json
 
 # --- 1. CONFIGURAZIONE PAGINA ---
-st.set_page_config(page_title="DBJ Notes", page_icon="📝", layout="wide")
+st.set_page_config(page_title="DOR Notes", page_icon="📝", layout="wide")
 
 # --- 2. GESTIONE STATO & PREFERENZE ---
 if 'text_size' not in st.session_state: st.session_state.text_size = "16px"
 
-# --- 3. CSS DINAMICO ---
+# --- 3. CSS ESTETICO (DOR NOTES STYLE) ---
 st.markdown(f"""
 <style>
-    /* TITOLO MINIMAL */
-    .minimal-title {{
-        font-family: 'Helvetica', sans-serif;
-        font-weight: 800;
-        font-size: 2.5rem;
-        color: #1a1a1a;
-        text-align: center;
-        margin-top: -10px;
+    /* TITOLO DOR NOTES (Fine, Elegante, Spaziato) */
+    .dor-title {{
+        font-family: 'Helvetica Neue', 'Helvetica', 'Arial', sans-serif;
+        font-weight: 300; /* Molto fine (Thin) */
+        font-size: 2.2rem; /* Più piccolo */
+        color: #000000;
+        text-align: left; /* Allineato a sinistra per bilanciare i bottoni */
+        letter-spacing: 4px; /* Spaziatura aesthetic */
+        text-transform: uppercase;
+        margin-top: 10px;
+        margin-bottom: 0px;
     }}
 
-    /* EXPANDER STYLE */
+    /* EXPANDER STYLE (Tendine) */
     .streamlit-expanderHeader {{
-        font-weight: bold;
-        font-size: 1.1rem;
+        font-weight: 600;
+        font-size: 1.0rem;
         color: #333;
         background-color: #fff;
         border-radius: 5px;
+        border: 1px solid #f0f0f0;
     }}
     .streamlit-expanderContent {{
-        border-top: 1px solid #f0f0f0;
+        border-top: none;
         font-size: {st.session_state.text_size};
+        padding-top: 10px;
     }}
     
-    /* Contenuto Quill (Lettura) */
+    /* Contenuto Lettura */
     .quill-read-content {{
         font-size: {st.session_state.text_size} !important;
+        font-family: 'Georgia', serif; /* Font lettura più piacevole */
+        line-height: 1.6;
     }}
 
-    /* INPUTS FOCUS */
+    /* INPUTS FOCUS (Nero minimal) */
     .stTextInput > div > div > input:focus {{
-        border-color: #333 !important;
-        box-shadow: 0 0 0 1px #333 !important;
+        border-color: #000 !important;
+        box-shadow: 0 0 0 1px #000 !important;
     }}
     
     /* ANIMAZIONE LOGO */
-    @keyframes pulse-logo {{
-        0% {{ transform: scale(1); opacity: 0.6; }}
-        50% {{ transform: scale(1.05); opacity: 1; }}
-        100% {{ transform: scale(1); opacity: 0.6; }}
+    @keyframes fade-in {{
+        0% {{ opacity: 0; letter-spacing: 0px; }}
+        100% {{ opacity: 1; letter-spacing: 8px; }}
     }}
-    .splash-logo {{
-        font-size: 60px;
+    .splash-text {{
+        font-family: 'Helvetica Neue', sans-serif;
+        font-weight: 300;
+        font-size: 3rem;
+        color: black;
         text-align: center;
-        animation: pulse-logo 1.2s infinite;
-        margin-top: 20vh;
+        text-transform: uppercase;
+        animation: fade-in 1.5s ease-out;
+        margin-top: 30vh;
+    }}
+    
+    /* Allineamento Bottoni Header */
+    div[data-testid="column"] {{
+        display: flex;
+        align-items: center; /* Centra verticalmente col titolo */
     }}
 </style>
 """, unsafe_allow_html=True)
@@ -69,9 +85,9 @@ st.markdown(f"""
 if 'first_load' not in st.session_state:
     placeholder = st.empty()
     with placeholder.container():
-        st.markdown("<div class='splash-logo'>📝</div>", unsafe_allow_html=True)
-        st.markdown(f"<h1 style='text-align: center; font-size: 2rem; color: #333;'>DBJ Notes</h1>", unsafe_allow_html=True)
-        time.sleep(1.2)
+        # Nuova animazione elegante testuale
+        st.markdown("<div class='splash-text'>DOR NOTES</div>", unsafe_allow_html=True)
+        time.sleep(1.5)
     placeholder.empty()
     st.session_state['first_load'] = True
 
@@ -90,7 +106,7 @@ if client is None: st.stop()
 db = client.diario_db
 collection = db.note
 
-# --- 5. FUNZIONI UTILITÀ (Backup) ---
+# --- 5. FUNZIONI UTILITÀ ---
 def converti_note_per_json(note_list):
     export_list = []
     for nota in note_list:
@@ -113,38 +129,35 @@ toolbar_config = [
     ['image', 'formula'],
 ]
 
-# --- 7. DIALOGHI (POPUP) ---
+# --- 7. DIALOGHI (TUTTO IN ITALIANO) ---
 
 # Popup Impostazioni
 @st.dialog("Impostazioni ⚙️")
 def apri_impostazioni():
     st.subheader("🛠️ Gestione Dati")
     
-    # 1. BACKUP
     st.write("**Backup Note**")
     tutte_le_note = list(collection.find({}))
     json_dati = converti_note_per_json(tutte_le_note)
     st.download_button(
-        label="⬇️ Scarica Backup Completo (.json)",
+        label="⬇️ Scarica Backup (.json)",
         data=json_dati,
-        file_name=f"backup_dbjnotes_{datetime.now().strftime('%Y%m%d')}.json",
+        file_name=f"backup_dornotes_{datetime.now().strftime('%Y%m%d')}.json",
         mime="application/json"
     )
     
     st.divider()
     
-    # 2. DIMENSIONE TESTO
     st.write("**Accessibilità**")
-    size_opt = st.select_slider("Dimensione Testo Note", options=["14px", "16px", "18px", "20px", "24px"], value=st.session_state.text_size)
+    size_opt = st.select_slider("Dimensione Testo", options=["14px", "16px", "18px", "20px", "24px"], value=st.session_state.text_size)
     if size_opt != st.session_state.text_size:
         st.session_state.text_size = size_opt
         st.rerun()
         
     st.divider()
     
-    # 3. PULIZIA AUTOMATICA
     st.write("**Manutenzione**")
-    if st.button("🧹 Elimina dal cestino note più vecchie di 30 giorni"):
+    if st.button("🧹 Pulisci Cestino (>30 gg)"):
         data_limite = datetime.now() - timedelta(days=30)
         result = collection.delete_many({
             "deleted": True,
@@ -171,7 +184,7 @@ def apri_popup_modifica(nota_id, titolo_vecchio, contenuto_vecchio):
 def apri_cestino():
     note_cestino = list(collection.find({"deleted": True}).sort("data", -1))
     col1, col2 = st.columns([3, 1])
-    col1.write(f"Note eliminate: {len(note_cestino)}")
+    col1.write(f"Note nel cestino: {len(note_cestino)}")
     if note_cestino:
         if col2.button("🔥 Svuota tutto"):
             collection.delete_many({"deleted": True})
@@ -180,19 +193,19 @@ def apri_cestino():
         for nota in note_cestino:
             c1, c2, c3 = st.columns([4, 1, 1])
             c1.markdown(f"**{nota['titolo']}**")
-            if c2.button("♻️", key=f"rest_{nota['_id']}"):
+            if c2.button("♻️ Ripristina", key=f"rest_{nota['_id']}"):
                 collection.update_one({"_id": nota['_id']}, {"$set": {"deleted": False}})
                 st.rerun()
-            if c3.button("❌", key=f"kill_{nota['_id']}"):
+            if c3.button("❌ Elimina", key=f"kill_{nota['_id']}"):
                 collection.delete_one({"_id": nota['_id']})
                 st.rerun()
     else:
-        st.info("Vuoto.")
+        st.info("Il cestino è vuoto.")
 
 # Popup Conferma Eliminazione
-@st.dialog("⚠️ Conferma Eliminazione")
+@st.dialog("⚠️ Conferma")
 def conferma_eliminazione(nota_id):
-    st.write("Spostare nel cestino?")
+    st.write("Spostare questa nota nel cestino?")
     c1, c2 = st.columns(2)
     if c1.button("Sì, elimina", type="primary"):
         collection.update_one({"_id": nota_id}, {"$set": {"deleted": True}})
@@ -202,105 +215,103 @@ def conferma_eliminazione(nota_id):
 
 # --- INTERFACCIA PRINCIPALE ---
 
-st.markdown("<div class='minimal-title'>DBJ Notes</div>", unsafe_allow_html=True)
+# 1. HEADER (TITOLO A SINISTRA, BOTTONI A DESTRA)
+head_col1, head_col2, head_col3 = st.columns([6, 1, 1]) # Proporzioni
 
-# --- BARRA STRUMENTI ---
-col_crea, col_trash, col_settings = st.columns([20, 1, 1])
+with head_col1:
+    st.markdown("<div class='dor-title'>DOR NOTES</div>", unsafe_allow_html=True)
 
-with col_crea:
-    with st.expander("✍️ Crea nuova nota"):
-        titolo_input = st.text_input("Titolo", key=f"tit_{st.session_state.editor_key}")
-        contenuto_input = st_quill(
-            placeholder="Scrivi qui...",
-            html=True,
-            toolbar=toolbar_config,
-            key=f"quill_{st.session_state.editor_key}"
-        )
-        st.markdown("---")
-        st.markdown("**📎 Allegati**")
-        uploaded_file = st.file_uploader("File", type=['pdf', 'docx', 'txt', 'mp3', 'wav', 'jpg', 'png'], key=f"file_{st.session_state.editor_key}")
-        
-        if st.button("Salva Nota 💾"):
-            if titolo_input and contenuto_input:
-                doc = {
-                    "titolo": titolo_input,
-                    "contenuto": contenuto_input,
-                    "data": datetime.now(),
-                    "tipo": "testo_ricco",
-                    "deleted": False,
-                    "pinned": False,
-                    "file_name": uploaded_file.name if uploaded_file else None,
-                    "file_data": bson.binary.Binary(uploaded_file.getvalue()) if uploaded_file else None
-                }
-                collection.insert_one(doc)
-                st.toast("Salvata!", icon="✅")
-                st.session_state.editor_key = str(uuid.uuid4())
-                time.sleep(0.5)
-                st.rerun()
-            else:
-                st.warning("Manca titolo o testo.")
-
-with col_trash:
-    st.write("")
-    if st.button("🗑️", help="Cestino"):
-        apri_cestino()
-
-with col_settings:
-    st.write("")
+with head_col2:
     if st.button("⚙️", help="Impostazioni"):
         apri_impostazioni()
 
-st.divider()
+with head_col3:
+    if st.button("🗑️", help="Cestino"):
+        apri_cestino()
 
-# --- RICERCA ---
-query = st.text_input("🔍", placeholder="Cerca nota...", label_visibility="collapsed")
+st.markdown("---") # Linea divisoria sottile subito sotto l'header
 
-# --- GRIGLIA NOTE ---
+# 2. SEZIONE CREA (SOLO CREAZIONE)
+with st.expander("✍️ Crea nuova nota"):
+    titolo_input = st.text_input("Titolo", key=f"tit_{st.session_state.editor_key}")
+    contenuto_input = st_quill(
+        placeholder="Scrivi qui i tuoi pensieri...",
+        html=True,
+        toolbar=toolbar_config,
+        key=f"quill_{st.session_state.editor_key}"
+    )
+    st.markdown("**📎 Allegati**")
+    uploaded_file = st.file_uploader("Carica File", type=['pdf', 'docx', 'txt', 'mp3', 'wav', 'jpg', 'png'], key=f"file_{st.session_state.editor_key}")
+    
+    if st.button("Salva Nota 💾"):
+        if titolo_input and contenuto_input:
+            doc = {
+                "titolo": titolo_input,
+                "contenuto": contenuto_input,
+                "data": datetime.now(),
+                "tipo": "testo_ricco",
+                "deleted": False,
+                "pinned": False,
+                "file_name": uploaded_file.name if uploaded_file else None,
+                "file_data": bson.binary.Binary(uploaded_file.getvalue()) if uploaded_file else None
+            }
+            collection.insert_one(doc)
+            st.toast("Nota salvata!", icon="✅")
+            st.session_state.editor_key = str(uuid.uuid4())
+            time.sleep(0.5)
+            st.rerun()
+        else:
+            st.warning("Inserisci titolo e contenuto.")
+
+st.write("") # Spazio
+
+# 3. RICERCA E GRIGLIA
+query = st.text_input("🔍", placeholder="Cerca tra le note...", label_visibility="collapsed")
+
 filtro = {"deleted": {"$ne": True}}
 if query:
     filtro = {"$and": [{"deleted": {"$ne": True}}, {"$or": [{"titolo": {"$regex": query, "$options": "i"}}, {"contenuto": {"$regex": query, "$options": "i"}}]}]}
 
+# Ordinamento: Pinned prima, poi Data
 note_attive = list(collection.find(filtro).sort([("pinned", -1), ("data", -1)]))
 
 if not note_attive:
-    st.info("Nessuna nota.")
+    st.info("Nessuna nota presente.")
 else:
     cols = st.columns(3)
     for index, nota in enumerate(note_attive):
         with cols[index % 3]:
-            # Gestione Icone Titolo
+            # Gestione Icone
             icona_clip = "📎 " if nota.get("file_name") else ""
             is_pinned = nota.get("pinned", False)
             icona_pin = "📌 " if is_pinned else ""
             
-            # Tendina Nota
+            # Tendina
             with st.expander(f"{icona_pin}{icona_clip}📄 {nota['titolo']}"):
                 
-                # Contenuto Nota
+                # Contenuto
                 st.markdown(f"<div class='quill-read-content'>{nota['contenuto']}</div>", unsafe_allow_html=True)
                 
-                # Allegato
+                # File Allegato
                 if nota.get("file_name"):
                     st.markdown("---")
-                    st.caption(f"File: {nota['file_name']}")
+                    st.caption(f"Allegato: {nota['file_name']}")
                     st.download_button("⬇️ Scarica", data=nota["file_data"], file_name=nota["file_name"])
                 
                 st.markdown("---")
                 
-                # PULSANTI AZIONE (3 COLONNE IN BASSO)
-                col_mod, col_pin, col_del = st.columns(3)
+                # PULSANTI (TRADOTTI E RIORDINATI)
+                c_mod, c_pin, c_del = st.columns(3)
                 
-                # 1. Modifica
-                if col_mod.button("✏️ Modifica", key=f"mod_{nota['_id']}"):
+                if c_mod.button("✏️ Modifica", key=f"mod_{nota['_id']}"):
                     apri_popup_modifica(nota['_id'], nota['titolo'], nota['contenuto'])
                 
-                # 2. Fissa / Sblocca
+                # Logica Pin/Unpin tradotta
                 label_pin = "Sblocca" if is_pinned else "📌 Fissa"
-                if col_pin.button(label_pin, key=f"pin_{nota['_id']}"):
+                if c_pin.button(label_pin, key=f"pin_{nota['_id']}"):
                      new_state = not is_pinned
                      collection.update_one({"_id": nota['_id']}, {"$set": {"pinned": new_state}})
                      st.rerun()
 
-                # 3. Elimina
-                if col_del.button("🗑️ Elimina", key=f"del_{nota['_id']}"):
+                if c_del.button("🗑️ Elimina", key=f"del_{nota['_id']}"):
                     conferma_eliminazione(nota['_id'])

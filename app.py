@@ -390,7 +390,6 @@ def render_notes_grid(note_list):
         with cols[index % 3]:
             icon_clip = "🖇️" if note.get("file_name") else ""
             is_pinned = note.get("pinned", False)
-            icon_pin = "⚲ " if is_pinned else ""
             
             with st.expander(f"{icon_pin}{icon_clip} {note['titolo']}"):
                 safe_content = sanitize_links(note['contenuto'])

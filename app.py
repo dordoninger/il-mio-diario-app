@@ -17,8 +17,13 @@ st.set_page_config(page_title="DOR NOTES", page_icon="📄", layout="wide")
 # --- 2. STATE MANAGEMENT ---
 if 'text_size' not in st.session_state: st.session_state.text_size = "16px"
 if 'edit_trigger' not in st.session_state: st.session_state.edit_trigger = 0
-if 'reset_counter' not in st.session_state: st.session_state.reset_counter = 0
 if 'create_key' not in st.session_state: st.session_state.create_key = str(uuid.uuid4())
+
+# EXPANDER STATE MANAGEMENT (Fixes closing on interaction)
+if 'create_expanded' not in st.session_state: st.session_state.create_expanded = False
+
+# Draw Color State
+if 'draw_color' not in st.session_state: st.session_state.draw_color = "#000000"
 
 # GRID COLUMNS SETTING
 if 'grid_cols' not in st.session_state: st.session_state.grid_cols = 4
@@ -92,46 +97,18 @@ st.markdown(f"""
         text-transform: uppercase;
     }}
 
-    /* --- BLACK BORDER FIX (COMPREHENSIVE) --- */
+    /* BLACK BORDER FIX (ALL INPUTS) */
+    div[data-baseweb="input"] {{ border-color: #e0e0e0 !important; border-radius: 8px !important; }}
+    div[data-baseweb="input"]:focus-within {{ border: 1px solid #333333 !important; box-shadow: none !important; }}
     
-    /* Text Inputs */
-    div[data-testid="stTextInput"] > div > div {{
-        border-color: #e0e0e0 !important;
-        border-radius: 8px !important;
-    }}
-    div[data-testid="stTextInput"] > div > div:focus-within {{
-        border-color: #000000 !important;
-        box-shadow: 0 0 0 1px #000000 !important;
-    }}
+    div[data-baseweb="textarea"] {{ border-color: #e0e0e0 !important; border-radius: 8px !important; }}
+    div[data-baseweb="textarea"]:focus-within {{ border: 1px solid #333333 !important; box-shadow: none !important; }}
     
-    /* Number Inputs (Canvas Size) - SPECIFIC FIX */
-    div[data-testid="stNumberInput"] > div > div {{
-        border-color: #e0e0e0 !important;
-        border-radius: 8px !important;
-    }}
-    div[data-testid="stNumberInput"] > div > div:focus-within {{
-        border-color: #000000 !important;
-        box-shadow: 0 0 0 1px #000000 !important;
-    }}
-    /* The input element itself inside the number box */
-    div[data-testid="stNumberInput"] input:focus {{
-        border-color: transparent !important;
-        box-shadow: none !important;
-        outline: none !important;
-    }}
+    div[data-testid="stNumberInput"] > div > div {{ border-color: #e0e0e0 !important; border-radius: 8px !important; }}
+    div[data-testid="stNumberInput"] > div > div:focus-within {{ border: 1px solid #333333 !important; box-shadow: none !important; }}
+    div[data-testid="stNumberInput"] input:focus {{ border-color: transparent !important; outline: none !important; }}
 
-    /* Text Areas */
-    div[data-testid="stTextArea"] > div > div {{
-        border-color: #e0e0e0 !important;
-        border-radius: 8px !important;
-    }}
-    div[data-testid="stTextArea"] > div > div:focus-within {{
-        border-color: #000000 !important;
-        box-shadow: 0 0 0 1px #000000 !important;
-    }}
-
-    /* General fallback */
-    input:focus {{ outline: none !important; }}
+    input:focus {{ outline: none !important; border-color: #000000 !important; }}
 
     /* ANIMATION */
     @keyframes fade-in {{
@@ -231,6 +208,10 @@ def hex_to_rgba(hex_color, opacity):
     hex_color = hex_color.lstrip('#')
     return f"rgba({int(hex_color[0:2], 16)}, {int(hex_color[2:4], 16)}, {int(hex_color[4:6], 16)}, {opacity})"
 
+# Helper to manage expander state
+def toggle_create_expander():
+    st.session_state.create_expanded = True
+
 # --- 6. TOOLBAR CONFIG ---
 toolbar_config = [
     ['bold', 'italic', 'underline', 'strike'],
@@ -280,13 +261,9 @@ def open_edit_popup(note_id, old_title, old_content, old_filename, old_labels, n
         new_content = old_content
         
         if note_type == "disegno":
-            # --- DRAWING TOOLS (EDIT MODE) ---
-            # Row 1: Dimensions (If needed, or just Color/Tools)
-            # Keeping it simple for edit: Color, Tool, Width
-            
             c_col, c_tool, c_width = st.columns([1, 2, 1])
             with c_col:
-                st.caption("Set colour")
+                st.markdown("<b>Set colour</b>", unsafe_allow_html=True)
                 base_color = st.color_picker("Color", "#000000", key=f"d_c_{note_id}", label_visibility="collapsed")
             with c_tool:
                 tool = st.radio("Tool", ["Pen", "Pencil", "Highlighter", "Eraser"], horizontal=True, key=f"d_t_{note_id}")
@@ -321,10 +298,7 @@ def open_edit_popup(note_id, old_title, old_content, old_filename, old_labels, n
         else:
             unique_key = f"quill_edit_{note_id}_{st.session_state.edit_trigger}"
             new_content = st_quill(value=old_content, toolbar=toolbar_config, html=True, key=unique_key)
-        
-        st.divider()
-        new_file = None
-        if note_type != "disegno":
+            st.divider()
             st.markdown("### Attachments")
             new_file = st.file_uploader("Replace File", type=['pdf', 'docx', 'txt', 'mp3', 'wav', 'jpg', 'png'])
 
@@ -344,8 +318,11 @@ def open_edit_popup(note_id, old_title, old_content, old_filename, old_labels, n
                     img = Image.fromarray(canvas_result.image_data.astype('uint8'), 'RGBA')
                     buf = io.BytesIO()
                     img.save(buf, format='PNG')
-                    update_data["file_data"] = bson.binary.Binary(buf.getvalue())
-                    update_data["file_name"] = "drawing.png"
+                    # FIX IMAGE 0 BUG: Ensure data is not empty
+                    val_bytes = buf.getvalue()
+                    if len(val_bytes) > 0:
+                        update_data["file_data"] = bson.binary.Binary(val_bytes)
+                        update_data["file_name"] = "drawing.png"
             else:
                 update_data["contenuto"] = new_content
                 if new_file:
@@ -443,15 +420,19 @@ with head_col3:
 st.markdown("---") 
 
 # --- CREATE NOTE ---
-expander_label = f"Create New Note{'\u200b' * st.session_state.reset_counter}"
-with st.expander(expander_label, expanded=False):
+# We track "create_expanded" in session state. 
+# If user changes Note Type (radio), we set it to True so it stays open.
+expander_state = st.session_state.create_expanded
+
+with st.expander("Create New Note", expanded=expander_state):
     
-    note_type = st.radio("Type:", ["Text", "Drawing"], horizontal=True)
+    # Callback to keep expander open when interacting
+    note_type = st.radio("Type:", ["Text", "Drawing"], horizontal=True, on_change=toggle_create_expander)
     
     if note_type == "Text":
         with st.form("create_note_form", clear_on_submit=True):
             title_input = st.text_input("Title", key=f"txt_tit_{st.session_state.create_key}")
-            labels_input = st.text_input("Labels", key=f"txt_lbl_{st.session_state.create_key}")
+            labels_input = st.text_input("Labels (comma separated)", key=f"txt_lbl_{st.session_state.create_key}")
             content_input = st_quill(placeholder="Write here...", html=True, toolbar=toolbar_config, key=f"quill_create_{st.session_state.create_key}")
             uploaded_file = st.file_uploader("Attachment", type=['pdf', 'docx', 'txt', 'mp3', 'wav', 'jpg', 'png'], key=f"txt_file_{st.session_state.create_key}")
             submitted_create = st.form_submit_button("Save Note")
@@ -475,28 +456,24 @@ with st.expander(expander_label, expanded=False):
                     }
                     collection.insert_one(doc)
                     st.toast("Saved!", icon="✅")
+                    
                     st.session_state.create_key = str(uuid.uuid4())
-                    st.session_state.reset_counter += 1
+                    st.session_state.create_expanded = False # Close on save
                     st.rerun()
                 else:
                     st.warning("Title and content required.")
     
     else: # DRAWING
-        # Use simple text inputs but with dynamic keys for reset
         title_input = st.text_input("Title", key=f"draw_title_{st.session_state.create_key}")
         labels_input = st.text_input("Labels", key=f"draw_labels_{st.session_state.create_key}")
         
-        # --- DRAWING LAYOUT (ALL ON TOP) ---
-        
-        # Row 1: Dimensions
         c_w, c_h = st.columns(2)
-        canv_width = c_w.number_input("W (px)", 300, 2000, 600, key=f"cw_{st.session_state.create_key}")
-        canv_height = c_h.number_input("H (px)", 300, 2000, 400, key=f"ch_{st.session_state.create_key}")
+        canv_width = c_w.number_input("Width (px)", 300, 2000, 600, key=f"cw_{st.session_state.create_key}")
+        canv_height = c_h.number_input("Height (px)", 300, 2000, 400, key=f"ch_{st.session_state.create_key}")
 
-        # Row 2: Color, Tools, Width
         c_col, c_tool, c_width = st.columns([1, 2, 1])
         with c_col:
-            st.caption("Set colour")
+            st.markdown("<b>Set colour</b>", unsafe_allow_html=True)
             base_color = st.color_picker("Color", "#000000", key=f"dc_{st.session_state.create_key}", label_visibility="collapsed")
         with c_tool:
             tool = st.radio("Tool", ["Pen", "Pencil", "Highlighter", "Eraser"], horizontal=True, key=f"dt_{st.session_state.create_key}")
@@ -515,7 +492,6 @@ with st.expander(expander_label, expanded=False):
         elif tool == "Eraser":
             if stroke_width < 10: stroke_width = 20
 
-        # Unique Key for Canvas
         canvas_key = f"canvas_{canv_width}_{canv_height}_{st.session_state.create_key}"
         
         canvas_result = st_canvas(
@@ -539,26 +515,28 @@ with st.expander(expander_label, expanded=False):
                 img = Image.fromarray(canvas_result.image_data.astype('uint8'), 'RGBA')
                 buf = io.BytesIO()
                 img.save(buf, format='PNG')
+                val_bytes = buf.getvalue() # Get bytes
                 
-                doc = {
-                    "titolo": title_input,
-                    "contenuto": "Drawing",
-                    "labels": labels_list,
-                    "data": datetime.now(),
-                    "custom_order": new_order,
-                    "tipo": "disegno",
-                    "deleted": False, "pinned": False,
-                    "file_name": "drawing.png",
-                    "file_data": bson.binary.Binary(buf.getvalue()),
-                    "drawing_json": json.dumps(canvas_result.json_data) 
-                }
-                collection.insert_one(doc)
-                st.toast("Saved!", icon="✅")
-                
-                # COMPLETE RESET
-                st.session_state.create_key = str(uuid.uuid4())
-                st.session_state.reset_counter += 1
-                st.rerun()
+                if len(val_bytes) > 0: # FIX IMAGE 0 BUG
+                    doc = {
+                        "titolo": title_input,
+                        "contenuto": "Drawing",
+                        "labels": labels_list,
+                        "data": datetime.now(),
+                        "custom_order": new_order,
+                        "tipo": "disegno",
+                        "deleted": False, "pinned": False,
+                        "file_name": "drawing.png",
+                        "file_data": bson.binary.Binary(val_bytes),
+                        "drawing_json": json.dumps(canvas_result.json_data) 
+                    }
+                    collection.insert_one(doc)
+                    st.toast("Saved!", icon="✅")
+                    st.session_state.create_key = str(uuid.uuid4())
+                    st.session_state.create_expanded = False # Close on save
+                    st.rerun()
+                else:
+                    st.error("Error saving image data.")
             else:
                 st.warning("Draw something and title it.")
 
@@ -605,7 +583,9 @@ def render_notes_grid(note_list):
                     st.write("")
                 
                 if note.get("tipo") == "disegno" and note.get("file_data"):
-                    st.image(note["file_data"])
+                    # Robust check for valid image data
+                    if len(note["file_data"]) > 0:
+                        st.image(note["file_data"], output_format="PNG")
                 else:
                     safe_content = process_content_for_display(note['contenuto'])
                     st.markdown(f"<div class='quill-read-content'>{safe_content}</div>", unsafe_allow_html=True)

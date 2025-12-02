@@ -2,10 +2,9 @@ import streamlit as st
 import pymongo
 from datetime import datetime, timedelta
 from streamlit_quill import st_quill
-from streamlit_drawable_canvas import st_canvas # LIBRERIA DISEGNO
-from PIL import Image # PER GESTIRE IMMAGINI
+from streamlit_drawable_canvas import st_canvas
+from PIL import Image
 import io
-import numpy as np
 import time
 import uuid
 import bson.binary
@@ -27,7 +26,6 @@ if 'grid_cols' not in st.session_state: st.session_state.grid_cols = 4
 # --- 3. CSS AESTHETIC ---
 st.markdown(f"""
 <style>
-    /* TITLE STYLE */
     .dor-title {{
         font-family: 'Helvetica Neue', 'Helvetica', 'Arial', sans-serif;
         font-weight: 300;
@@ -39,8 +37,6 @@ st.markdown(f"""
         margin-top: 10px;
         margin-bottom: 0px;
     }}
-
-    /* EXPANDER STYLE */
     .streamlit-expander {{
         border-radius: 12px !important;
         border: 1px solid #e0e0e0 !important;
@@ -63,21 +59,16 @@ st.markdown(f"""
         padding-top: 10px;
         border-radius: 0 0 12px 12px;
     }}
-    
-    /* READ CONTENT STYLE */
     .quill-read-content {{
         font-size: {st.session_state.text_size} !important;
         font-family: 'Georgia', serif;
         line-height: 1.6;
     }}
-    
     .quill-read-content a {{
         color: #1E90FF !important;
         text-decoration: underline !important;
         cursor: pointer !important;
     }}
-
-    /* BADGE STYLE */
     .dor-badge {{
         display: inline-block;
         background-color: #f0f0f0;
@@ -93,15 +84,11 @@ st.markdown(f"""
         letter-spacing: 0.5px;
         text-transform: uppercase;
     }}
-
-    /* BLACK BORDER FIX */
     div[data-baseweb="input"] {{ border-color: #e0e0e0 !important; border-radius: 8px !important; }}
     div[data-baseweb="input"]:focus-within {{ border: 1px solid #333333 !important; box-shadow: none !important; }}
     div[data-baseweb="textarea"] {{ border-color: #e0e0e0 !important; border-radius: 8px !important; }}
     div[data-baseweb="textarea"]:focus-within {{ border: 1px solid #333333 !important; box-shadow: none !important; }}
     input:focus {{ outline: none !important; }}
-
-    /* ANIMATION */
     @keyframes fade-in {{
         0% {{ opacity: 0; letter-spacing: 0px; }}
         100% {{ opacity: 1; letter-spacing: 8px; }}
@@ -116,10 +103,7 @@ st.markdown(f"""
         animation: fade-in 2.0s ease-out;
         margin-top: 30vh;
     }}
-    
     div[data-testid="column"] {{ display: flex; align-items: center; }}
-    
-    /* PINNED HEADER */
     .pinned-header {{
         font-family: 'Helvetica Neue', 'Helvetica', 'Arial', sans-serif;
         font-weight: 300;
@@ -158,7 +142,7 @@ if client is None: st.stop()
 db = client.diario_db
 collection = db.note
 
-# --- 5. LOGIC ---
+# --- 5. LOGIC & UTILS ---
 def ensure_custom_order():
     count_missing = collection.count_documents({"custom_order": {"$exists": False}})
     if count_missing > 0:
@@ -168,7 +152,6 @@ def ensure_custom_order():
 
 ensure_custom_order()
 
-# --- UTILS ---
 def convert_notes_to_json(note_list):
     export_list = []
     for nota in note_list:
@@ -176,6 +159,7 @@ def convert_notes_to_json(note_list):
         nota_export['_id'] = str(nota['_id'])
         nota_export['data'] = nota['data'].strftime("%Y-%m-%d %H:%M:%S")
         if 'file_data' in nota_export: del nota_export['file_data']
+        if 'drawing_json' in nota_export: del nota_export['drawing_json'] # Exclude heavy vector data
         export_list.append(nota_export)
     return json.dumps(export_list, indent=4)
 
@@ -183,16 +167,8 @@ def process_content_for_display(html_content):
     if not html_content: return ""
     html_content = re.sub(r'<a href="(.*?)"', r'<a href="\1" target="_blank" style="color: #1E90FF !important; text-decoration: underline !important; cursor: pointer;" rel="noopener noreferrer"', html_content)
     html_content = html_content.replace('<span class="ql-ui" contenteditable="false"></span>', '')
-    html_content = re.sub(
-        r'<li data-list="unchecked">(.*?)</li>', 
-        r'<div style="display: flex; align-items: flex-start; margin-bottom: 4px; margin-left: 5px;"><span style="margin-right: 10px; font-size: 1.2em; color: #555; line-height: 1.2;">&#9744;</span><span>\1</span></div>', 
-        html_content, flags=re.DOTALL
-    )
-    html_content = re.sub(
-        r'<li data-list="checked">(.*?)</li>', 
-        r'<div style="display: flex; align-items: flex-start; margin-bottom: 4px; margin-left: 5px; color: #888; text-decoration: line-through;"><span style="margin-right: 10px; font-size: 1.2em; color: #333; text-decoration: none; line-height: 1.2;">&#9745;</span><span>\1</span></div>', 
-        html_content, flags=re.DOTALL
-    )
+    html_content = re.sub(r'<li data-list="unchecked">(.*?)</li>', r'<div style="display: flex; align-items: flex-start; margin-bottom: 4px; margin-left: 5px;"><span style="margin-right: 10px; font-size: 1.2em; color: #555; line-height: 1.2;">&#9744;</span><span>\1</span></div>', html_content, flags=re.DOTALL)
+    html_content = re.sub(r'<li data-list="checked">(.*?)</li>', r'<div style="display: flex; align-items: flex-start; margin-bottom: 4px; margin-left: 5px; color: #888; text-decoration: line-through;"><span style="margin-right: 10px; font-size: 1.2em; color: #333; text-decoration: none; line-height: 1.2;">&#9745;</span><span>\1</span></div>', html_content, flags=re.DOTALL)
     html_content = html_content.replace('<ul>', '').replace('</ul>', '')
     return html_content
 
@@ -203,11 +179,15 @@ def render_badges(labels_list):
         html += f"<span class='dor-badge'>{label}</span>"
     return html
 
-# --- TOOLBAR CONFIG ---
+def hex_to_rgba(hex_color, opacity):
+    hex_color = hex_color.lstrip('#')
+    return f"rgba({int(hex_color[0:2], 16)}, {int(hex_color[2:4], 16)}, {int(hex_color[4:6], 16)}, {opacity})"
+
+# --- 6. TOOLBAR CONFIG ---
 toolbar_config = [
     ['bold', 'italic', 'underline', 'strike'],
     [{ 'header': [1, 2, 3, False] }],
-    [{ 'list': 'ordered'}, { 'list': 'bullet'}, { 'list': 'check' }], 
+    [{ 'list': 'ordered'}, { 'list': 'bullet'}, { 'list': 'check' }],
     [{ 'script': 'sub'}, { 'script': 'super' }], 
     [{ 'color': [] }, { 'background': [] }],
     [{ 'font': [] }],
@@ -216,7 +196,7 @@ toolbar_config = [
     ['link'],
 ]
 
-# --- POPUPS ---
+# --- 7. POPUPS (DIALOGS) ---
 
 @st.dialog("Settings")
 def open_settings():
@@ -225,18 +205,15 @@ def open_settings():
     if cols_opt != st.session_state.grid_cols:
         st.session_state.grid_cols = cols_opt
         st.rerun()
-        
     size_opt = st.select_slider("Text Size", options=["14px", "16px", "18px", "20px", "24px"], value=st.session_state.text_size)
     if size_opt != st.session_state.text_size:
         st.session_state.text_size = size_opt
         st.rerun()
-        
     st.divider()
     st.write("**Data**")
     all_notes = list(collection.find({}))
     json_data = convert_notes_to_json(all_notes)
     st.download_button("Download Backup (.json)", data=json_data, file_name=f"backup_{datetime.now().strftime('%Y%m%d')}.json", mime="application/json")
-    
     st.write("**Maintenance**")
     if st.toggle("Auto-delete items older than 30 days"):
         limit = datetime.now() - timedelta(days=30)
@@ -244,39 +221,97 @@ def open_settings():
         if res.deleted_count > 0: st.success(f"Cleaned {res.deleted_count} items.")
 
 @st.dialog("Edit Note", width="large")
-def open_edit_popup(note_id, old_title, old_content, old_filename, old_labels):
+def open_edit_popup(note_id, old_title, old_content, old_filename, old_labels, note_type, drawing_data=None):
     st.markdown("### Edit Content")
     labels_str = ", ".join(old_labels) if old_labels else ""
+    
     with st.form(key=f"edit_form_{note_id}"):
         new_title = st.text_input("Title", value=old_title)
-        new_labels_str = st.text_input("Labels (comma separated)", value=labels_str, placeholder="Important, Work...")
+        new_labels_str = st.text_input("Labels", value=labels_str)
         
-        unique_key = f"quill_edit_{note_id}_{st.session_state.edit_trigger}"
-        new_content = st_quill(value=old_content, toolbar=toolbar_config, html=True, key=unique_key)
+        # --- EDIT LOGIC SPLIT BY TYPE ---
+        new_content = old_content # Default
+        new_drawing_json = drawing_data # Default
+        new_image_bytes = None
+        
+        if note_type == "disegno":
+            # DRAWING TOOLS
+            t_col, w_col = st.columns([2, 1])
+            with t_col:
+                tool = st.radio("Tool", ["🖊️ Pen", "🖍️ Highlighter", "🧼 Eraser"], horizontal=True)
+            with w_col:
+                stroke_width = st.slider("Width", 1, 30, 3)
+            
+            # Determine Color/Opacity based on Tool
+            base_color = st.color_picker("Color", "#000000") if tool != "🧼 Eraser" else "#ffffff"
+            
+            final_color = base_color
+            if tool == "🖍️ Highlighter":
+                final_color = hex_to_rgba(base_color, 0.3)
+                if stroke_width < 10: stroke_width = 15 # Default thicker for highlighter
+            if tool == "🧼 Eraser":
+                if stroke_width < 10: stroke_width = 20 # Default thicker for eraser
+
+            # Initial Drawing Logic:
+            # If we have JSON (vector data), use it (Fully Editable).
+            # If not (old notes), create empty canvas (Image will be in background if loaded properly, 
+            # but st_canvas handles background separately. For simplicity, we start fresh or overlay).
+            init_draw = json.loads(drawing_data) if drawing_data else None
+            
+            canvas_result = st_canvas(
+                fill_color="rgba(0,0,0,0)",
+                stroke_width=stroke_width,
+                stroke_color=final_color,
+                background_color="#FFFFFF",
+                initial_drawing=init_draw,
+                update_streamlit=True,
+                height=400,
+                drawing_mode="freedraw",
+                key=f"canvas_edit_{note_id}",
+            )
+        else:
+            # TEXT TOOLS
+            unique_key = f"quill_edit_{note_id}_{st.session_state.edit_trigger}"
+            new_content = st_quill(value=old_content, toolbar=toolbar_config, html=True, key=unique_key)
         
         st.divider()
-        st.markdown("### Attachments")
-        new_file = st.file_uploader("Replace File (Optional)", type=['pdf', 'docx', 'txt', 'mp3', 'wav', 'jpg', 'png'])
-        
+        if note_type != "disegno":
+            st.markdown("### Attachments")
+            new_file = st.file_uploader("Replace File", type=['pdf', 'docx', 'txt', 'mp3', 'wav', 'jpg', 'png'])
+        else:
+            new_file = None # Drawing replaces file logic
+
         submitted = st.form_submit_button("Save Changes", type="primary")
         
         if submitted:
             labels_list = [tag.strip() for tag in new_labels_str.split(",") if tag.strip()]
             update_data = {
                 "titolo": new_title, 
-                "contenuto": new_content, 
                 "labels": labels_list,
                 "data": datetime.now() 
             }
-            if new_file:
-                update_data["file_name"] = new_file.name
-                update_data["file_data"] = bson.binary.Binary(new_file.getvalue())
+            
+            if note_type == "disegno":
+                if canvas_result.image_data is not None:
+                    # Save Vector Data
+                    update_data["drawing_json"] = json.dumps(canvas_result.json_data)
+                    # Save Rendered Image
+                    img = Image.fromarray(canvas_result.image_data.astype('uint8'), 'RGBA')
+                    buf = io.BytesIO()
+                    img.save(buf, format='PNG')
+                    update_data["file_data"] = bson.binary.Binary(buf.getvalue())
+                    update_data["file_name"] = "drawing.png"
+            else:
+                update_data["contenuto"] = new_content
+                if new_file:
+                    update_data["file_name"] = new_file.name
+                    update_data["file_data"] = bson.binary.Binary(new_file.getvalue())
             
             collection.update_one({"_id": note_id}, {"$set": update_data})
             st.session_state.edit_trigger += 1 
             st.rerun()
 
-    if old_filename:
+    if old_filename and note_type != "disegno":
         st.info(f"Current file: **{old_filename}**")
         if st.button("Remove file", key=f"rm_file_{note_id}"):
             collection.update_one({"_id": note_id}, {"$set": {"file_name": None, "file_data": None}})
@@ -291,7 +326,7 @@ def open_move_popup(current_note_id):
     }).sort("custom_order", 1))
     
     if not candidates:
-        st.warning("No other notes available to swap with.")
+        st.warning("No other notes available.")
         return
 
     def get_label(n):
@@ -299,28 +334,18 @@ def open_move_popup(current_note_id):
         return f"{status} {n['titolo']}"
 
     options = {n["_id"]: get_label(n) for n in candidates}
-    
     selected_target_id = st.selectbox("Swap with:", options.keys(), format_func=lambda x: options[x])
     
     if st.button("Confirm Swap ⇄", type="primary"):
         current_note = collection.find_one({"_id": current_note_id})
         target_note = collection.find_one({"_id": selected_target_id})
-        
         if current_note and target_note:
             order_curr = current_note.get("custom_order", 0)
             pinned_curr = current_note.get("pinned", False)
-            
             order_targ = target_note.get("custom_order", 0)
             pinned_targ = target_note.get("pinned", False)
-            
-            collection.update_one(
-                {"_id": current_note_id}, 
-                {"$set": {"custom_order": order_targ, "pinned": pinned_targ}}
-            )
-            collection.update_one(
-                {"_id": selected_target_id}, 
-                {"$set": {"custom_order": order_curr, "pinned": pinned_curr}}
-            )
+            collection.update_one({"_id": current_note_id}, {"$set": {"custom_order": order_targ, "pinned": pinned_targ}})
+            collection.update_one({"_id": selected_target_id}, {"$set": {"custom_order": order_curr, "pinned": pinned_curr}})
             st.rerun()
 
 @st.dialog("Trash", width="large")
@@ -335,8 +360,11 @@ def open_trash():
         st.divider()
         for note in trash_notes:
             with st.expander(f"🗑 {note['titolo']}"):
-                safe_content = process_content_for_display(note['contenuto'])
-                st.markdown(f"<div class='quill-read-content'>{safe_content}</div>", unsafe_allow_html=True)
+                if note.get("tipo") == "disegno" and note.get("file_data"):
+                    st.image(note["file_data"])
+                else:
+                    safe_content = process_content_for_display(note['contenuto'])
+                    st.markdown(f"<div class='quill-read-content'>{safe_content}</div>", unsafe_allow_html=True)
                 c1, c2 = st.columns(2)
                 if c1.button("↺ Restore", key=f"r_{note['_id']}"):
                     collection.update_one({"_id": note['_id']}, {"$set": {"deleted": False}})
@@ -373,20 +401,13 @@ st.markdown("---")
 expander_label = f"Create New Note{'\u200b' * st.session_state.reset_counter}"
 with st.expander(expander_label, expanded=False):
     
-    # NOTE TYPE SELECTOR
-    note_type = st.radio("Note Type:", ["📝 Text", "🎨 Drawing"], horizontal=True)
+    note_type = st.radio("Type:", ["📝 Text", "🎨 Drawing"], horizontal=True)
     
     if note_type == "📝 Text":
         with st.form("create_note_form", clear_on_submit=True):
             title_input = st.text_input("Title")
-            labels_input = st.text_input("Labels (comma separated)", placeholder="Important, Work...")
-            
-            content_input = st_quill(
-                placeholder="Write here...", html=True, 
-                toolbar=toolbar_config, 
-                key=f"quill_create_{st.session_state.create_key}"
-            )
-            
+            labels_input = st.text_input("Labels (comma separated)")
+            content_input = st_quill(placeholder="Write here...", html=True, toolbar=toolbar_config, key=f"quill_create_{st.session_state.create_key}")
             uploaded_file = st.file_uploader("Attachment", type=['pdf', 'docx', 'txt', 'mp3', 'wav', 'jpg', 'png'])
             submitted_create = st.form_submit_button("Save Note")
             
@@ -415,26 +436,35 @@ with st.expander(expander_label, expanded=False):
                 else:
                     st.warning("Title and content required.")
     
-    else: # DRAWING MODE
-        title_input = st.text_input("Drawing Title", key="draw_title")
+    else: # DRAWING
+        title_input = st.text_input("Title", key="draw_title")
         labels_input = st.text_input("Labels", key="draw_labels")
         
-        c_col, c_width, c_undo = st.columns([1, 1, 1])
-        with c_col:
-            stroke_color = st.color_picker("Stroke color", "#000000")
-        with c_width:
-            stroke_width = st.slider("Stroke width", 1, 25, 3)
+        # DRAWING TOOLS
+        c1, c2 = st.columns([2, 1])
+        with c1:
+            tool = st.radio("Tool", ["🖊️ Pen", "🖍️ Highlighter", "🧼 Eraser"], horizontal=True, key="draw_tool")
+        with c2:
+            stroke_width = st.slider("Width", 1, 30, 3, key="draw_width")
         
-        # CANVAS
+        base_color = st.color_picker("Color", "#000000", key="draw_color") if tool != "🧼 Eraser" else "#ffffff"
+        
+        final_color = base_color
+        if tool == "🖍️ Highlighter":
+            final_color = hex_to_rgba(base_color, 0.3)
+            if stroke_width < 10: stroke_width = 15
+        if tool == "🧼 Eraser":
+            if stroke_width < 10: stroke_width = 20
+
         canvas_result = st_canvas(
-            fill_color="rgba(255, 165, 0, 0.3)",  # Fixed fill color with some opacity
+            fill_color="rgba(0,0,0,0)",
             stroke_width=stroke_width,
-            stroke_color=stroke_color,
+            stroke_color=final_color,
             background_color="#FFFFFF",
             update_streamlit=True,
-            height=350,
+            height=400,
             drawing_mode="freedraw",
-            key="canvas",
+            key="canvas_create",
         )
         
         if st.button("Save Drawing"):
@@ -443,29 +473,28 @@ with st.expander(expander_label, expanded=False):
                 last_note = collection.find_one(sort=[("custom_order", -1)])
                 new_order = (last_note["custom_order"] + 1) if last_note and "custom_order" in last_note else 0
                 
-                # Convert numpy array (RGBA) to PNG Bytes
                 img = Image.fromarray(canvas_result.image_data.astype('uint8'), 'RGBA')
                 buf = io.BytesIO()
                 img.save(buf, format='PNG')
-                byte_im = buf.getvalue()
                 
                 doc = {
                     "titolo": title_input,
-                    "contenuto": "<i>(Handwritten Note)</i>", # Placeholder text
+                    "contenuto": "Drawing",
                     "labels": labels_list,
                     "data": datetime.now(),
                     "custom_order": new_order,
                     "tipo": "disegno",
                     "deleted": False, "pinned": False,
-                    "file_name": "drawing.png", # Force filename
-                    "file_data": bson.binary.Binary(byte_im)
+                    "file_name": "drawing.png",
+                    "file_data": bson.binary.Binary(buf.getvalue()),
+                    "drawing_json": json.dumps(canvas_result.json_data) # SAVE VECTOR DATA
                 }
                 collection.insert_one(doc)
                 st.toast("Saved!", icon="✅")
                 st.session_state.reset_counter += 1
                 st.rerun()
             else:
-                st.warning("Draw something and give it a title.")
+                st.warning("Draw something and title it.")
 
 st.write("")
 query = st.text_input("🔍", placeholder="Search...", label_visibility="collapsed")
@@ -490,21 +519,17 @@ other_notes = [n for n in all_notes if not n.get("pinned", False)]
 
 def render_notes_grid(note_list):
     if not note_list: return
-    
     num_cols = st.session_state.grid_cols
     cols = st.columns(num_cols)
-    
     for index, note in enumerate(note_list):
         with cols[index % num_cols]: 
-            # ICONS
             icon_clip = "🖇️ " if note.get("file_name") else ""
-            if note.get("tipo") == "disegno": icon_clip = "🎨 " # Special icon for drawings
+            if note.get("tipo") == "disegno": icon_clip = "🎨 "
             
             labels = note.get("labels", [])
             icon_label = "🏷️ " if labels else ""
             is_pinned = note.get("pinned", False)
             icon_pin = "" 
-            
             full_title = f"{icon_pin}{icon_label}{icon_clip}{note['titolo']}"
             
             with st.expander(full_title):
@@ -512,39 +537,29 @@ def render_notes_grid(note_list):
                     st.markdown(render_badges(labels), unsafe_allow_html=True)
                     st.write("")
                 
-                # CONTENT (Text or Drawing)
+                # CONTENT
                 if note.get("tipo") == "disegno" and note.get("file_data"):
                     st.image(note["file_data"])
                 else:
                     safe_content = process_content_for_display(note['contenuto'])
                     st.markdown(f"<div class='quill-read-content'>{safe_content}</div>", unsafe_allow_html=True)
                 
-                # Attachment (If any, or if it's a drawing)
-                if note.get("file_name"):
+                if note.get("file_name") and note.get("tipo") != "disegno":
                     st.markdown("---")
-                    # If it's NOT a drawing note but has a file, show preview
-                    if note.get("tipo") != "disegno":
-                        fname = note["file_name"].lower()
-                        if fname.endswith(('.png', '.jpg', '.jpeg')):
-                            st.image(note["file_data"])
-                    
-                    st.caption(f"File: {note['file_name']}")
+                    st.caption(f"Attachment: {note['file_name']}")
                     st.download_button("Download", data=note["file_data"], file_name=note["file_name"])
                 
                 st.markdown("---")
                 
                 c_mod, c_pin, c_move, c_del = st.columns(4)
                 
-                # Edit (Only for text notes for now, complex to edit drawing)
-                if note.get("tipo") != "disegno":
-                    if c_mod.button("✎", key=f"mod_{note['_id']}", help="Edit"):
-                        open_edit_popup(note['_id'], note['titolo'], note['contenuto'], note.get("file_name"), labels)
-                else:
-                    st.write("") # Spacer for drawing notes (no edit yet)
+                if c_mod.button("✎", key=f"mod_{note['_id']}", help="Edit"):
+                    # Pass JSON data if it exists
+                    draw_data = note.get("drawing_json", None)
+                    open_edit_popup(note['_id'], note['titolo'], note['contenuto'], note.get("file_name"), labels, note.get("tipo"), draw_data)
                 
                 label_pin = "⚲"
-                help_text = "Unpin" if is_pinned else "Pin"
-                if c_pin.button(label_pin, key=f"pin_{note['_id']}", help=help_text):
+                if c_pin.button(label_pin, key=f"pin_{note['_id']}", help="Pin"):
                      collection.update_one({"_id": note['_id']}, {"$set": {"pinned": not is_pinned}})
                      st.rerun()
 

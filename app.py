@@ -15,10 +15,10 @@ st.set_page_config(page_title="DOR NOTES", page_icon="📄", layout="wide")
 if 'text_size' not in st.session_state: st.session_state.text_size = "16px"
 if 'edit_trigger' not in st.session_state: st.session_state.edit_trigger = 0
 
-# KEY PER IL TRUCCO "PING-PONG" (CHIUSURA FORZATA TENDINA)
-if 'expander_toggle' not in st.session_state: st.session_state.expander_toggle = 0
+# CONTATORE PER IL TRUCCO "CHIUSURA FORZATA"
+if 'reset_counter' not in st.session_state: st.session_state.reset_counter = 0
 
-# Gestione chiave univoca per svuotare l'editor dopo il salvataggio
+# Chiave per svuotare l'editor
 if 'create_key' not in st.session_state: st.session_state.create_key = str(uuid.uuid4())
 
 # --- 3. CSS AESTHETIC ---
@@ -195,7 +195,7 @@ def open_edit_popup(note_id):
     raw_content = note.get('contenuto', '')
     old_filename = note.get('file_name', None)
 
-    # PULIZIA FORMULE (Versione stabile)
+    # PULIZIA FORMULE
     clean_content = re.sub(
         r'<span class="ql-formula"[\s\S]*?data-value="([^"]+)"[\s\S]*?>[\s\S]*?</span>', 
         r' **(Formula: \1)** ', 
@@ -284,19 +284,23 @@ with head_col3:
 
 st.markdown("---") 
 
-# --- CREATE NOTE LOGIC (PING PONG FIX) ---
+# --- CREATE NOTE EXPANDER (FORCE CLOSE TRICK) ---
 
-# Questa funzione contiene tutto il form. La chiameremo due volte.
-def render_create_note_form(suffix_key):
-    with st.form(f"create_note_form_{suffix_key}", clear_on_submit=True):
+# IL TRUCCO: Aggiungiamo caratteri invisibili al titolo in base al contatore.
+# Quando il titolo cambia (es. da "Create Note" a "Create Note "), Streamlit
+# crede che sia un NUOVO expander e lo inizializza chiuso.
+expander_label = f"Create New Note{'\u200b' * st.session_state.reset_counter}"
+
+with st.expander(expander_label, expanded=False):
+    with st.form("create_note_form", clear_on_submit=True):
         title_input = st.text_input("Title")
         
+        # Editor con chiave dinamica per reset totale
         content_input = st_quill(
             placeholder="Write your thoughts here...",
             html=True,
             toolbar=toolbar_config,
-            # Chiave unica combinata con il reset key per pulizia totale
-            key=f"quill_create_{st.session_state.create_key}_{suffix_key}" 
+            key=f"quill_create_{st.session_state.create_key}" 
         )
         uploaded_file = st.file_uploader("Attachment", type=['pdf', 'docx', 'txt', 'mp3', 'wav', 'jpg', 'png'])
         
@@ -317,30 +321,16 @@ def render_create_note_form(suffix_key):
                 st.toast("Saved!", icon="✅")
                 time.sleep(0.5)
                 
-                # AZIONI DI RESET:
-                # 1. Cambia la chiave dell'editor per svuotarlo
+                # AZIONI POST-SALVATAGGIO:
+                # 1. Cambiamo la chiave dell'editor per svuotarlo
                 st.session_state.create_key = str(uuid.uuid4())
                 
-                # 2. IL TRUCCO PING-PONG: Cambia questo toggle (0 -> 1 -> 0)
-                # Questo costringe Streamlit a renderizzare l'ALTRO blocco if/else sotto.
-                # Per Streamlit, è un expander completamente nuovo, quindi nasce CHIUSO.
-                st.session_state.expander_toggle = 1 if st.session_state.expander_toggle == 0 else 0
+                # 2. Incrementiamo il contatore per cambiare il nome della tendina (e forzare la chiusura)
+                st.session_state.reset_counter += 1
                 
                 st.rerun()
             else:
                 st.warning("Title and content required.")
-
-# LOGICA PING-PONG: 
-# Se toggle è 0, disegniamo l'Expander A.
-# Se toggle è 1, disegniamo l'Expander B.
-# Poiché sono in rami diversi del codice, Streamlit resetta lo stato "aperto/chiuso" quando si passa da uno all'altro.
-if st.session_state.expander_toggle == 0:
-    with st.expander("Create New Note", expanded=False):
-        render_create_note_form("A")
-else:
-    with st.expander("Create New Note", expanded=False):
-        render_create_note_form("B")
-
 
 st.write("")
 query = st.text_input("🔍", placeholder="Search...", label_visibility="collapsed")

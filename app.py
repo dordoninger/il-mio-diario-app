@@ -385,7 +385,13 @@ def open_trash():
             with st.expander(f"🗑 {note['titolo']}"):
                 if note.get("tipo") == "disegno" and note.get("file_data"):
                     if len(note["file_data"]) > 100:
-                        st.image(note["file_data"])
+                        # --- FIX IMMAGINE TRASH ---
+                        try:
+                            img_stream = io.BytesIO(note["file_data"])
+                            img = Image.open(img_stream)
+                            st.image(img)
+                        except:
+                            st.error("Image error")
                 else:
                     safe_content = process_content_for_display(note['contenuto'])
                     st.markdown(f"<div class='quill-read-content'>{safe_content}</div>", unsafe_allow_html=True)
@@ -466,11 +472,9 @@ with st.expander("Create New Note", expanded=expander_state):
         title_input = st.text_input("Title", key=f"draw_title_{st.session_state.create_key}")
         labels_input = st.text_input("Labels", key=f"draw_labels_{st.session_state.create_key}")
         
-        # --- QUI SONO STATI INSERITI I CURSORI ---
         c_w, c_h = st.columns(2)
         canv_width = c_w.slider("Width (px)", 200, 1000, 600, key=f"cw_{st.session_state.create_key}")
         canv_height = c_h.slider("Height (px)", 200, 1000, 400, key=f"ch_{st.session_state.create_key}")
-        # ----------------------------------------
 
         c_col, c_tool, c_width = st.columns([1, 2, 1])
         with c_col:
@@ -585,7 +589,16 @@ def render_notes_grid(note_list):
                 
                 if note.get("tipo") == "disegno" and note.get("file_data"):
                     if len(note["file_data"]) > 100:
-                        st.image(note["file_data"], output_format="PNG")
+                        # --- FIX IMMAGINE: USARE PIL IMAGE.OPEN ---
+                        try:
+                            # Convertiamo i bytes in uno stream
+                            img_stream = io.BytesIO(note["file_data"])
+                            # Apriamo l'immagine con PIL
+                            img = Image.open(img_stream)
+                            # Mostriamo l'immagine PIL (molto più sicuro che passare i raw bytes)
+                            st.image(img)
+                        except Exception:
+                            st.error("Errore caricamento disegno")
                 else:
                     safe_content = process_content_for_display(note['contenuto'])
                     st.markdown(f"<div class='quill-read-content'>{safe_content}</div>", unsafe_allow_html=True)

@@ -16,6 +16,9 @@ if 'text_size' not in st.session_state: st.session_state.text_size = "16px"
 if 'edit_trigger' not in st.session_state: st.session_state.edit_trigger = 0
 if 'create_expanded' not in st.session_state: st.session_state.create_expanded = False
 
+# Gestione chiave univoca per pulire l'editor di creazione dopo il salvataggio
+if 'create_key' not in st.session_state: st.session_state.create_key = str(uuid.uuid4())
+
 # --- 3. CSS AESTHETIC ---
 st.markdown(f"""
 <style>
@@ -88,11 +91,11 @@ st.markdown(f"""
         align-items: center;
     }}
     
-    /* Styling per sezione Pinned/All Notes (Modificato: Sottile e senza grassetto) */
+    /* Styling per sezione Pinned/All Notes (Modificato: Più piccolo) */
     .pinned-header {{
         font-family: 'Helvetica Neue', 'Helvetica', 'Arial', sans-serif;
-        font-weight: 300;  /* Leggero (non grassetto) */
-        font-size: 1.4rem;
+        font-weight: 300;
+        font-size: 1.1rem; /* Ridotto per essere più discreto */
         color: #000;
         margin-top: 20px;
         margin-bottom: 10px;
@@ -190,7 +193,7 @@ def open_edit_popup(note_id):
     raw_content = note.get('contenuto', '')
     old_filename = note.get('file_name', None)
 
-    # PULIZIA FORMULE (Fix regex aggressivo)
+    # PULIZIA FORMULE
     clean_content = re.sub(
         r'<span class="ql-formula"[\s\S]*?data-value="([^"]+)"[\s\S]*?>[\s\S]*?</span>', 
         r' **(Formula: \1)** ', 
@@ -266,33 +269,32 @@ def confirm_deletion(note_id):
 
 # --- MAIN LAYOUT ---
 
-# Modificato layout colonne per spingere i bottoni a destra [9.0, 0.5, 0.5]
 head_col1, head_col2, head_col3 = st.columns([9.0, 0.5, 0.5])
 
 with head_col1: 
     st.markdown("<div class='dor-title'>DOR NOTES</div>", unsafe_allow_html=True)
 with head_col2: 
-    # Distanziatore verticale per abbassare il pulsante
     st.markdown("<div style='height: 15px;'></div>", unsafe_allow_html=True)
     if st.button("⚙️", help="Settings"): open_settings()
 with head_col3: 
-    # Distanziatore verticale per abbassare il pulsante
     st.markdown("<div style='height: 15px;'></div>", unsafe_allow_html=True)
     if st.button("🗑️", help="Trash"): open_trash()
 
 st.markdown("---") 
 
-# --- CREATE NOTE EXPANDER ---
+# --- CREATE NOTE EXPANDER (MODIFICATO PER RESET TOTALE) ---
 
 with st.expander("Create New Note", expanded=st.session_state.create_expanded):
     with st.form("create_note_form", clear_on_submit=True):
         title_input = st.text_input("Title")
         
+        # Usiamo una chiave dinamica. Cambiandola dopo il salvataggio, 
+        # forziamo Streamlit a creare un editor NUOVO e VUOTO.
         content_input = st_quill(
             placeholder="Write your thoughts here...",
             html=True,
             toolbar=toolbar_config,
-            key="quill_create_final"
+            key=f"quill_create_{st.session_state.create_key}" 
         )
         uploaded_file = st.file_uploader("Attachment", type=['pdf', 'docx', 'txt', 'mp3', 'wav', 'jpg', 'png'])
         
@@ -312,7 +314,13 @@ with st.expander("Create New Note", expanded=st.session_state.create_expanded):
                 collection.insert_one(doc)
                 st.toast("Saved!", icon="✅")
                 time.sleep(0.5)
+                
+                # RESET E CHIUSURA:
+                # 1. Chiude la tendina
                 st.session_state.create_expanded = False
+                # 2. Genera nuova chiave per pulire completamente l'editor
+                st.session_state.create_key = str(uuid.uuid4())
+                
                 st.rerun()
             else:
                 st.warning("Title and content required.")
@@ -372,10 +380,9 @@ if not all_notes:
     st.info("No notes found.")
 else:
     if pinned_notes:
-        # Rimossa emoji e impostato stile leggero tramite CSS
         st.markdown("<div class='pinned-header'>Pinned Notes</div>", unsafe_allow_html=True)
         render_notes_grid(pinned_notes)
-        st.write("") # Spazio vuoto
+        st.write("") 
         st.markdown("<div class='pinned-header'>All Notes</div>", unsafe_allow_html=True)
     
     render_notes_grid(other_notes)

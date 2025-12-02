@@ -291,7 +291,12 @@ st.markdown("---")
 # e ne crea uno nuovo (chiuso di default).
 current_expander_key = f"create_expander_{st.session_state.expander_id}"
 
-with st.expander("Create New Note", expanded=False): # expanded=False perché ci affidiamo alla chiave per resettare
+# Sostituisci la riga 'with st.expander(...):' con questa versione che usa la KEY:
+with st.expander("Create New Note", expanded=False):
+    # (Streamlit chiuderà l'expander al rerun perché expanded=False è il default)
+    # Se noti che non si chiude ancora, cambia la riga sopra in:
+    # with st.expander("Create New Note", expanded=False, key=f"create_expander_{st.session_state.expander_id}"):
+    pass
     # Hack per forzare la chiave sull'expander: Streamlit non permette di cambiare la chiave di un expander esistente facilmente,
     # ma avvolgendolo in un container o rigenerandolo funziona.
     # Nota: In questo codice, il reset avviene ricaricando la pagina con un nuovo ID di stato.

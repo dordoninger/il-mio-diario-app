@@ -220,11 +220,11 @@ with head_col1:
     st.markdown("<div class='dor-title'>DOR NOTES</div>", unsafe_allow_html=True)
 
 with head_col2:
-    if st.button("Options", help="Impostazioni"):
+    if st.button("⚙️", help="Impostazioni"):
         apri_impostazioni()
 
 with head_col3:
-    if st.button("Bin", help="Cestino"):
+    if st.button("🗑️", help="Cestino"):
         apri_cestino()
 
 st.markdown("---") # Linea divisoria sottile subito sotto l'header
@@ -279,7 +279,7 @@ else:
     for index, nota in enumerate(note_attive):
         with cols[index % 3]:
             # Gestione Icone
-            icona_clip = "📎 " if nota.get("file_name") else ""
+            icona_clip = "🖇️" if nota.get("file_name") else ""
             is_pinned = nota.get("pinned", False)
             icona_pin = "📌 " if is_pinned else ""
             

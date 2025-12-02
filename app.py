@@ -218,11 +218,15 @@ def process_content_for_display(html_content):
 
 def flatten_formulas_to_text(html_content):
     """
-    Converts Quill formula tags back to raw Latex text.
-    <span class="ql-formula" data-value="x^2"></span>  -->  x^2
+    IMPROVED FORMULA CLEANER
+    Extracts ONLY the latex data-value, ignoring the messy visual representation inside the span.
     """
     if not html_content: return ""
-    return re.sub(r'<span class="ql-formula" data-value="(.*?)"></span>', r' \1 ', html_content)
+    # Regex to find <span class="ql-formula" data-value="...">...</span>
+    # We grab only the 'data-value' part and ignore the rest of the span content.
+    pattern = r'<span class="ql-formula" data-value="([^"]*)">.*?</span>'
+    # Replace with $$ formula $$ to make it clear and editable
+    return re.sub(pattern, r' $$\1$$ ', html_content, flags=re.DOTALL)
 
 def render_badges(labels_list):
     if not labels_list: return ""
@@ -406,7 +410,7 @@ def open_edit_popup(note_id, old_title, old_content, old_filename, old_labels, n
                 new_date_str = str(new_date)
             except: pass
 
-        # FLATTEN FORMULAS TO TEXT FOR EDITING (PREVENTS CRASH)
+        # CLEAN FORMULAS FOR EDITING
         safe_content = flatten_formulas_to_text(old_content)
         
         canvas_result = None
@@ -461,6 +465,7 @@ def open_edit_popup(note_id, old_title, old_content, old_filename, old_labels, n
             collection.update_one({"_id": note_id}, {"$set": update_data})
             st.session_state.edit_trigger += 1 
             st.session_state.cal_edit_id = None
+            st.session_state.cal_copy_id = None
             st.rerun()
 
     if old_filename and note_type != "disegno":
@@ -553,7 +558,6 @@ tab_dash, tab_cal = st.tabs(["DASHBOARD", "CALENDAR"])
 
 # ================= DASHBOARD TAB =================
 with tab_dash:
-    # CREATE NOTE
     expander_label = f"+ Create New Note{'\u200b' * st.session_state.reset_counter}"
     with st.expander(expander_label, expanded=False):
         render_create_note_form("dash_create") 
@@ -669,7 +673,6 @@ with tab_cal:
     start_date_str = f"{st.session_state.cal_year}-{st.session_state.cal_month:02d}-01"
     end_date_str = f"{st.session_state.cal_year}-{st.session_state.cal_month:02d}-{num_days}"
     
-    # FETCH
     month_notes_reg = list(collection.find({
         "calendar_date": {"$gte": start_date_str, "$lte": end_date_str},
         "deleted": {"$ne": True}
@@ -747,7 +750,6 @@ with tab_cal:
                     extra_icons = ""
                     if note.get("labels"): extra_icons += "🏷️ "
                     if note.get("file_name") and note.get("tipo") != "disegno": extra_icons += "🖇️ "
-                    # REMOVED LINK ICON AS REQUESTED
                     
                     st.markdown(f"**{extra_icons}{icon_art}{title_txt}**")
                     
@@ -763,8 +765,8 @@ with tab_cal:
                     if note.get("file_name") and note.get("tipo") != "disegno":
                         st.download_button("Download", data=note["file_data"], file_name=note["file_name"], key=f"dlc_{note['_id']}")
                     
-                    # CALENDAR BUTTONS (Closer, Compact)
-                    c1, c2, c3, c_space = st.columns([1, 1, 1, 5]) # Buttons grouped on left
+                    # CALENDAR BUTTONS (Grouped left)
+                    c1, c2, c3, c_space = st.columns([1, 1, 1, 6])
                     
                     if c1.button("✎ Edit", key=f"ced_{note['_id']}"):
                         draw_data = note.get("drawing_json", None)

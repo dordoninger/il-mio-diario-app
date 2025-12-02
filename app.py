@@ -17,6 +17,9 @@ if 'edit_trigger' not in st.session_state: st.session_state.edit_trigger = 0
 if 'reset_counter' not in st.session_state: st.session_state.reset_counter = 0
 if 'create_key' not in st.session_state: st.session_state.create_key = str(uuid.uuid4())
 
+# GRID COLUMNS SETTING (Default: 4)
+if 'grid_cols' not in st.session_state: st.session_state.grid_cols = 4
+
 # --- 3. CSS AESTHETIC ---
 st.markdown(f"""
 <style>
@@ -33,19 +36,33 @@ st.markdown(f"""
         margin-bottom: 0px;
     }}
 
-    /* EXPANDER STYLE */
+    /* --- ROUNDED NOTES & COMPACT HEADERS --- */
+    
+    /* Target the Expander Container (The Note Card) */
+    .streamlit-expander {{
+        border-radius: 12px !important; /* ROUNDED CORNERS */
+        border: 1px solid #e0e0e0 !important;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.03); /* Subtle Shadow */
+        background-color: white;
+        margin-bottom: 10px;
+    }}
+    
+    /* Make headers shorter (less padding) */
     .streamlit-expanderHeader {{
         font-weight: 600;
         font-size: 1.0rem;
         color: #333;
         background-color: #fff;
-        border-radius: 5px;
-        border: 1px solid #f0f0f0;
+        border-radius: 12px 12px 0 0; /* Rounded top */
+        padding-top: 0.5rem !important;    /* SHORTER */
+        padding-bottom: 0.5rem !important; /* SHORTER */
     }}
+    
     .streamlit-expanderContent {{
-        border-top: none;
+        border-top: 1px solid #f8f8f8;
         font-size: {st.session_state.text_size};
         padding-top: 10px;
+        border-radius: 0 0 12px 12px; /* Rounded bottom */
     }}
     
     /* READ CONTENT STYLE */
@@ -79,9 +96,9 @@ st.markdown(f"""
     }}
 
     /* BLACK BORDER FIX */
-    div[data-baseweb="input"] {{ border-color: #e0e0e0 !important; border-radius: 5px !important; }}
+    div[data-baseweb="input"] {{ border-color: #e0e0e0 !important; border-radius: 8px !important; }}
     div[data-baseweb="input"]:focus-within {{ border: 1px solid #333333 !important; box-shadow: none !important; }}
-    div[data-baseweb="textarea"] {{ border-color: #e0e0e0 !important; border-radius: 5px !important; }}
+    div[data-baseweb="textarea"] {{ border-color: #e0e0e0 !important; border-radius: 8px !important; }}
     div[data-baseweb="textarea"]:focus-within {{ border: 1px solid #333333 !important; box-shadow: none !important; }}
     input:focus {{ outline: none !important; }}
 
@@ -103,7 +120,7 @@ st.markdown(f"""
     
     div[data-testid="column"] {{
         display: flex;
-        align-items: center;
+        align-items: center; /* Vertically align items in the row */
     }}
     
     /* PINNED HEADER */
@@ -194,17 +211,25 @@ toolbar_config = [
 
 @st.dialog("Settings")
 def open_settings():
-    st.write("**Data Backup**")
-    all_notes = list(collection.find({}))
-    json_data = convert_notes_to_json(all_notes)
-    st.download_button("Download Backup (.json)", data=json_data, file_name=f"backup_{datetime.now().strftime('%Y%m%d')}.json", mime="application/json")
-    st.divider()
-    st.write("**Accessibility**")
+    st.write("**Appearance**")
+    
+    # GRID COLUMNS SLIDER
+    cols_opt = st.slider("Grid Columns", min_value=1, max_value=5, value=st.session_state.grid_cols)
+    if cols_opt != st.session_state.grid_cols:
+        st.session_state.grid_cols = cols_opt
+        st.rerun()
+        
     size_opt = st.select_slider("Text Size", options=["14px", "16px", "18px", "20px", "24px"], value=st.session_state.text_size)
     if size_opt != st.session_state.text_size:
         st.session_state.text_size = size_opt
         st.rerun()
+        
     st.divider()
+    st.write("**Data**")
+    all_notes = list(collection.find({}))
+    json_data = convert_notes_to_json(all_notes)
+    st.download_button("Download Backup (.json)", data=json_data, file_name=f"backup_{datetime.now().strftime('%Y%m%d')}.json", mime="application/json")
+    
     st.write("**Maintenance**")
     if st.toggle("Auto-delete items older than 30 days"):
         limit = datetime.now() - timedelta(days=30)
@@ -250,45 +275,37 @@ def open_edit_popup(note_id, old_title, old_content, old_filename, old_labels):
             collection.update_one({"_id": note_id}, {"$set": {"file_name": None, "file_data": None}})
             st.rerun()
 
-# --- MOVE (SWAP) POPUP ---
 @st.dialog("Move Note", width="large")
 def open_move_popup(current_note_id):
     st.write("Select the note you want to swap positions with:")
-    
-    # FETCH ALL ACTIVE NOTES (No filter by pinned status anymore)
     candidates = list(collection.find({
         "deleted": {"$ne": True},
         "_id": {"$ne": current_note_id}
-    }).sort("custom_order", 1)) # Show in logical order
+    }).sort("custom_order", 1))
     
     if not candidates:
         st.warning("No other notes available to swap with.")
         return
 
-    # Helper to show if note is pinned in dropdown
     def get_label(n):
-        status = "📌 Pinned" if n.get("pinned", False) else "📄 Normal"
-        return f"{status} | {n['titolo']}"
+        status = "📌" if n.get("pinned", False) else "📄"
+        return f"{status} {n['titolo']}"
 
     options = {n["_id"]: get_label(n) for n in candidates}
     
     selected_target_id = st.selectbox("Swap with:", options.keys(), format_func=lambda x: options[x])
     
     if st.button("Confirm Swap ⇄", type="primary"):
-        # 1. Get both documents
         current_note = collection.find_one({"_id": current_note_id})
         target_note = collection.find_one({"_id": selected_target_id})
         
         if current_note and target_note:
-            # Get current values
             order_curr = current_note.get("custom_order", 0)
             pinned_curr = current_note.get("pinned", False)
             
             order_targ = target_note.get("custom_order", 0)
             pinned_targ = target_note.get("pinned", False)
             
-            # 2. SWAP EVERYTHING (Order AND Pinned Status)
-            # This effectively makes Note A take Note B's exact spot in the UI
             collection.update_one(
                 {"_id": current_note_id}, 
                 {"$set": {"custom_order": order_targ, "pinned": pinned_targ}}
@@ -297,7 +314,6 @@ def open_move_popup(current_note_id):
                 {"_id": selected_target_id}, 
                 {"$set": {"custom_order": order_curr, "pinned": pinned_curr}}
             )
-            
             st.rerun()
 
 @st.dialog("Trash", width="large")
@@ -346,45 +362,53 @@ with head_col3:
 
 st.markdown("---") 
 
-# --- CREATE NOTE ---
-expander_label = f"Create New Note{'\u200b' * st.session_state.reset_counter}"
-with st.expander(expander_label, expanded=False):
-    with st.form("create_note_form", clear_on_submit=True):
-        title_input = st.text_input("Title")
-        labels_input = st.text_input("Labels (comma separated)", placeholder="Important, Work...")
-        content_input = st_quill(placeholder="Write here...", html=True, toolbar=toolbar_config, key=f"quill_create_{st.session_state.create_key}")
-        uploaded_file = st.file_uploader("Attachment", type=['pdf', 'docx', 'txt', 'mp3', 'wav', 'jpg', 'png'])
-        submitted_create = st.form_submit_button("Save Note")
-        
-        if submitted_create:
-            if title_input and content_input:
-                labels_list = [tag.strip() for tag in labels_input.split(",") if tag.strip()]
-                
-                last_note = collection.find_one(sort=[("custom_order", -1)])
-                new_order = (last_note["custom_order"] + 1) if last_note and "custom_order" in last_note else 0
-                
-                doc = {
-                    "titolo": title_input,
-                    "contenuto": content_input,
-                    "labels": labels_list,
-                    "data": datetime.now(),
-                    "custom_order": new_order, 
-                    "tipo": "testo_ricco",
-                    "deleted": False, "pinned": False,
-                    "file_name": uploaded_file.name if uploaded_file else None,
-                    "file_data": bson.binary.Binary(uploaded_file.getvalue()) if uploaded_file else None
-                }
-                collection.insert_one(doc)
-                st.toast("Saved!", icon="✅")
-                st.session_state.create_key = str(uuid.uuid4())
-                st.session_state.reset_counter += 1
-                st.rerun()
-            else:
-                st.warning("Title and content required.")
+# --- SINGLE LINE: CREATE & SEARCH ---
+# Layout: 60% Create Note, 40% Search Bar
+c_create, c_search = st.columns([6, 4])
 
-st.write("")
-query = st.text_input("🔍", placeholder="Search...", label_visibility="collapsed")
+with c_create:
+    expander_label = f"Create New Note{'\u200b' * st.session_state.reset_counter}"
+    with st.expander(expander_label, expanded=False):
+        with st.form("create_note_form", clear_on_submit=True):
+            title_input = st.text_input("Title")
+            labels_input = st.text_input("Labels (comma separated)", placeholder="Important, Work...")
+            content_input = st_quill(placeholder="Write here...", html=True, toolbar=toolbar_config, key=f"quill_create_{st.session_state.create_key}")
+            uploaded_file = st.file_uploader("Attachment", type=['pdf', 'docx', 'txt', 'mp3', 'wav', 'jpg', 'png'])
+            submitted_create = st.form_submit_button("Save Note")
+            
+            if submitted_create:
+                if title_input and content_input:
+                    labels_list = [tag.strip() for tag in labels_input.split(",") if tag.strip()]
+                    
+                    last_note = collection.find_one(sort=[("custom_order", -1)])
+                    new_order = (last_note["custom_order"] + 1) if last_note and "custom_order" in last_note else 0
+                    
+                    doc = {
+                        "titolo": title_input,
+                        "contenuto": content_input,
+                        "labels": labels_list,
+                        "data": datetime.now(),
+                        "custom_order": new_order, 
+                        "tipo": "testo_ricco",
+                        "deleted": False, "pinned": False,
+                        "file_name": uploaded_file.name if uploaded_file else None,
+                        "file_data": bson.binary.Binary(uploaded_file.getvalue()) if uploaded_file else None
+                    }
+                    collection.insert_one(doc)
+                    st.toast("Saved!", icon="✅")
+                    st.session_state.create_key = str(uuid.uuid4())
+                    st.session_state.reset_counter += 1
+                    st.rerun()
+                else:
+                    st.warning("Title and content required.")
 
+with c_search:
+    # Use empty container to align vertically if needed, mostly fine as is
+    query = st.text_input("🔍", placeholder="Search...", label_visibility="collapsed")
+
+st.write("") # Spacer
+
+# FILTER LOGIC
 filter_query = {"deleted": {"$ne": True}}
 if query:
     filter_query = {
@@ -405,9 +429,13 @@ other_notes = [n for n in all_notes if not n.get("pinned", False)]
 
 def render_notes_grid(note_list):
     if not note_list: return
-    cols = st.columns(4)
+    
+    # DYNAMIC GRID COLUMNS
+    num_cols = st.session_state.grid_cols
+    cols = st.columns(num_cols)
+    
     for index, note in enumerate(note_list):
-        with cols[index % 4]: 
+        with cols[index % num_cols]: 
             icon_clip = "🖇️" if note.get("file_name") else ""
             is_pinned = note.get("pinned", False)
             icon_pin = "" if is_pinned else ""
@@ -434,8 +462,7 @@ def render_notes_grid(note_list):
                 if c_mod.button("✎", key=f"mod_{note['_id']}", help="Edit"):
                     open_edit_popup(note['_id'], note['titolo'], note['contenuto'], note.get("file_name"), labels)
                 
-                # UPDATED ICON FOR UNPIN
-                label_pin = "⚲" if is_pinned else "⚲"
+                label_pin = "Unpin" if is_pinned else "⚲"
                 help_text = "Unpin" if is_pinned else "Pin"
                 if c_pin.button(label_pin, key=f"pin_{note['_id']}", help=help_text):
                      collection.update_one({"_id": note['_id']}, {"$set": {"pinned": not is_pinned}})

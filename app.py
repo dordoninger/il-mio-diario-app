@@ -19,7 +19,7 @@ if 'text_size' not in st.session_state: st.session_state.text_size = "16px"
 if 'edit_trigger' not in st.session_state: st.session_state.edit_trigger = 0
 if 'create_key' not in st.session_state: st.session_state.create_key = str(uuid.uuid4())
 
-# EXPANDER STATE MANAGEMENT (Fixes closing on interaction)
+# EXPANDER STATE MANAGEMENT
 if 'create_expanded' not in st.session_state: st.session_state.create_expanded = False
 
 # Draw Color State
@@ -99,14 +99,24 @@ st.markdown(f"""
 
     /* BLACK BORDER FIX (ALL INPUTS) */
     div[data-baseweb="input"] {{ border-color: #e0e0e0 !important; border-radius: 8px !important; }}
-    div[data-baseweb="input"]:focus-within {{ border: 1px solid #333333 !important; box-shadow: none !important; }}
+    div[data-baseweb="input"]:focus-within {{ border: 1px solid #000000 !important; box-shadow: none !important; }}
     
     div[data-baseweb="textarea"] {{ border-color: #e0e0e0 !important; border-radius: 8px !important; }}
-    div[data-baseweb="textarea"]:focus-within {{ border: 1px solid #333333 !important; box-shadow: none !important; }}
+    div[data-baseweb="textarea"]:focus-within {{ border: 1px solid #000000 !important; box-shadow: none !important; }}
     
-    div[data-testid="stNumberInput"] > div > div {{ border-color: #e0e0e0 !important; border-radius: 8px !important; }}
-    div[data-testid="stNumberInput"] > div > div:focus-within {{ border: 1px solid #333333 !important; box-shadow: none !important; }}
-    div[data-testid="stNumberInput"] input:focus {{ border-color: transparent !important; outline: none !important; }}
+    /* SPECIFIC FIX FOR NUMBER INPUTS (Canvas Size) */
+    div[data-testid="stNumberInput"] div[data-baseweb="input"] {{
+        border-color: #e0e0e0 !important;
+        border-radius: 8px !important;
+    }}
+    div[data-testid="stNumberInput"] div[data-baseweb="input"]:focus-within {{
+        border: 1px solid #000000 !important;
+        box-shadow: none !important;
+    }}
+    div[data-testid="stNumberInput"] input:focus {{
+        outline: none !important;
+        box-shadow: none !important;
+    }}
 
     input:focus {{ outline: none !important; border-color: #000000 !important; }}
 
@@ -268,7 +278,8 @@ def open_edit_popup(note_id, old_title, old_content, old_filename, old_labels, n
             with c_tool:
                 tool = st.radio("Tool", ["Pen", "Pencil", "Highlighter", "Eraser"], horizontal=True, key=f"d_t_{note_id}")
             with c_width:
-                stroke_width = st.slider("Width", 1, 30, 2, key=f"d_w_{note_id}")
+                # MODIFICA 2: Renamed Width to Stroke thickness
+                stroke_width = st.slider("Stroke thickness", 1, 30, 2, key=f"d_w_{note_id}")
             
             if tool == "Eraser": base_color = "#ffffff"
             
@@ -318,9 +329,10 @@ def open_edit_popup(note_id, old_title, old_content, old_filename, old_labels, n
                     img = Image.fromarray(canvas_result.image_data.astype('uint8'), 'RGBA')
                     buf = io.BytesIO()
                     img.save(buf, format='PNG')
-                    # FIX IMAGE 0 BUG: Ensure data is not empty
                     val_bytes = buf.getvalue()
-                    if len(val_bytes) > 0:
+                    
+                    # MODIFICA 1: Check length > 100 to ensure valid PNG
+                    if len(val_bytes) > 100:
                         update_data["file_data"] = bson.binary.Binary(val_bytes)
                         update_data["file_name"] = "drawing.png"
             else:
@@ -383,7 +395,9 @@ def open_trash():
         for note in trash_notes:
             with st.expander(f"🗑 {note['titolo']}"):
                 if note.get("tipo") == "disegno" and note.get("file_data"):
-                    st.image(note["file_data"])
+                    # Check for valid image data in trash too
+                    if len(note["file_data"]) > 100:
+                        st.image(note["file_data"])
                 else:
                     safe_content = process_content_for_display(note['contenuto'])
                     st.markdown(f"<div class='quill-read-content'>{safe_content}</div>", unsafe_allow_html=True)
@@ -468,6 +482,7 @@ with st.expander("Create New Note", expanded=expander_state):
         labels_input = st.text_input("Labels", key=f"draw_labels_{st.session_state.create_key}")
         
         c_w, c_h = st.columns(2)
+        # Note: These are 'stNumberInput' which we fixed in CSS to be black on focus
         canv_width = c_w.number_input("Width (px)", 300, 2000, 600, key=f"cw_{st.session_state.create_key}")
         canv_height = c_h.number_input("Height (px)", 300, 2000, 400, key=f"ch_{st.session_state.create_key}")
 
@@ -478,7 +493,8 @@ with st.expander("Create New Note", expanded=expander_state):
         with c_tool:
             tool = st.radio("Tool", ["Pen", "Pencil", "Highlighter", "Eraser"], horizontal=True, key=f"dt_{st.session_state.create_key}")
         with c_width:
-            stroke_width = st.slider("Width", 1, 30, 2, key=f"dw_{st.session_state.create_key}")
+            # MODIFICA 2: Renamed Width to Stroke thickness
+            stroke_width = st.slider("Stroke thickness", 1, 30, 2, key=f"dw_{st.session_state.create_key}")
         
         if tool == "Eraser": base_color = "#ffffff"
         
@@ -517,7 +533,8 @@ with st.expander("Create New Note", expanded=expander_state):
                 img.save(buf, format='PNG')
                 val_bytes = buf.getvalue() # Get bytes
                 
-                if len(val_bytes) > 0: # FIX IMAGE 0 BUG
+                # MODIFICA 1: Stronger check for valid image data (> 100 bytes)
+                if len(val_bytes) > 100: 
                     doc = {
                         "titolo": title_input,
                         "contenuto": "Drawing",
@@ -536,9 +553,9 @@ with st.expander("Create New Note", expanded=expander_state):
                     st.session_state.create_expanded = False # Close on save
                     st.rerun()
                 else:
-                    st.error("Error saving image data.")
+                    st.error("Error: Drawing data is empty or invalid. Please draw something.")
             else:
-                st.warning("Draw something and title it.")
+                st.warning("Please verify title and drawing.")
 
 st.write("")
 query = st.text_input("🔍", placeholder="Search...", label_visibility="collapsed")
@@ -583,8 +600,9 @@ def render_notes_grid(note_list):
                     st.write("")
                 
                 if note.get("tipo") == "disegno" and note.get("file_data"):
-                    # Robust check for valid image data
-                    if len(note["file_data"]) > 0:
+                    # MODIFICA 1: Display check (avoid broken icon 0)
+                    # A valid PNG is almost certainly > 100 bytes.
+                    if len(note["file_data"]) > 100:
                         st.image(note["file_data"], output_format="PNG")
                 else:
                     safe_content = process_content_for_display(note['contenuto'])
@@ -605,8 +623,8 @@ def render_notes_grid(note_list):
                 
                 label_pin = "⚲"
                 if c_pin.button(label_pin, key=f"pin_{note['_id']}", help="Pin"):
-                     collection.update_one({"_id": note['_id']}, {"$set": {"pinned": not is_pinned}})
-                     st.rerun()
+                      collection.update_one({"_id": note['_id']}, {"$set": {"pinned": not is_pinned}})
+                      st.rerun()
 
                 if c_move.button("⇄", key=f"mv_{note['_id']}", help="Move"):
                     open_move_popup(note['_id'])

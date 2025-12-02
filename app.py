@@ -137,13 +137,13 @@ st.markdown(f"""
         letter-spacing: 1px;
     }}
     
-    /* CALENDAR DAY NOTE (NO EXPANDER) */
-    .cal-note-container {
+    /* CALENDAR DAY NOTE (NO EXPANDER) - FIX PARENTHESIS HERE */
+    .cal-note-container {{
         padding: 10px;
         margin-bottom: 15px;
         border-left: 3px solid #333;
         background-color: #fafafa;
-    }
+    }}
 </style>
 """, unsafe_allow_html=True)
 
@@ -509,7 +509,6 @@ def open_calendar_day(day_date_str):
         ]
     }
     
-    # Combined fetch manually
     notes_reg = list(collection.find(q_regular))
     notes_rec = list(collection.find(q_recur))
     day_notes = notes_reg + notes_rec
@@ -518,33 +517,33 @@ def open_calendar_day(day_date_str):
         st.info("No notes for this day.")
     else:
         for note in day_notes:
-            # NO EXPANDER FOR CALENDAR - DIRECT VIEW
-            st.markdown(f"### {note['titolo']}")
-            
-            labels = note.get("labels", [])
-            if labels: st.markdown(render_badges(labels), unsafe_allow_html=True)
-            
-            if note.get("recurrence") == "yearly":
-                st.caption("🔄 *Yearly Event*")
+            # DIRECT VIEW (NO EXPANDER)
+            with st.container():
+                st.markdown(f"### {note['titolo'] if note['titolo'] else 'Untitled Note'}")
+                
+                labels = note.get("labels", [])
+                if labels: st.markdown(render_badges(labels), unsafe_allow_html=True)
+                
+                if note.get("recurrence") == "yearly": st.caption("🔄 *Yearly Event*")
 
-            if note.get("tipo") == "disegno" and note.get("file_data") and len(note["file_data"]) > 0:
-                try: st.image(Image.open(io.BytesIO(note["file_data"])))
-                except: pass
-            else:
-                st.markdown(f"<div class='quill-read-content'>{process_content_for_display(note['contenuto'])}</div>", unsafe_allow_html=True)
+                if note.get("tipo") == "disegno" and note.get("file_data") and len(note["file_data"]) > 0:
+                    try: st.image(Image.open(io.BytesIO(note["file_data"])))
+                    except: pass
+                else:
+                    st.markdown(f"<div class='quill-read-content'>{process_content_for_display(note['contenuto'])}</div>", unsafe_allow_html=True)
+                
+                if note.get("file_name") and note.get("tipo") != "disegno":
+                    st.download_button("Download", data=note["file_data"], file_name=note["file_name"], key=f"dlc_{note['_id']}")
+                
+                c1, c2 = st.columns(2)
+                if c1.button("✎ Edit", key=f"ced_{note['_id']}"):
+                    draw_data = note.get("drawing_json", None)
+                    open_edit_popup(note['_id'], note['titolo'], note['contenuto'], note.get("file_name"), labels, note.get("tipo"), draw_data)
+                
+                if c2.button("🗑 Delete", key=f"cdel_{note['_id']}"):
+                    confirm_deletion(note['_id'])
             
-            if note.get("file_name") and note.get("tipo") != "disegno":
-                st.download_button("Download", data=note["file_data"], file_name=note["file_name"], key=f"dlc_{note['_id']}")
-            
-            c1, c2 = st.columns(2)
-            if c1.button("✎ Edit", key=f"ced_{note['_id']}"):
-                draw_data = note.get("drawing_json", None)
-                open_edit_popup(note['_id'], note['titolo'], note['contenuto'], note.get("file_name"), labels, note.get("tipo"), draw_data)
-            
-            if c2.button("🗑 Delete", key=f"cdel_{note['_id']}"):
-                confirm_deletion(note['_id'])
-            
-            st.divider()
+            st.markdown("---")
 
 # --- MAIN LAYOUT ---
 
@@ -598,7 +597,9 @@ with tab_dash:
                 if note.get("tipo") == "disegno": icon_clip = "🎨 "
                 labels = note.get("labels", [])
                 icon_label = "🏷️ " if labels else ""
-                full_title = f"{icon_label}{icon_clip}{note['titolo']}"
+                
+                title_disp = note['titolo'] if note['titolo'] else "Untitled Note"
+                full_title = f"{icon_label}{icon_clip}{title_disp}"
                 
                 with st.expander(full_title):
                     if labels: st.markdown(render_badges(labels), unsafe_allow_html=True)
@@ -638,6 +639,7 @@ with tab_dash:
 
 # ================= CALENDAR TAB =================
 with tab_cal:
+    # Navigation
     c_prev, c_sel_m, c_sel_y, c_next = st.columns([1, 2, 2, 1])
     
     with c_prev:
@@ -701,7 +703,6 @@ with tab_cal:
     notes_by_day = {}
     for n in all_cal_notes:
         if n.get("recurrence") == "yearly":
-            # For recurring, construct date for key
             d = f"{st.session_state.cal_year}-{st.session_state.cal_month:02d}-{n['cal_day']:02d}"
         else:
             d = n["calendar_date"]

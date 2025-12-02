@@ -16,7 +16,7 @@ if 'text_size' not in st.session_state: st.session_state.text_size = "16px"
 # Trigger to force updates
 if 'edit_trigger' not in st.session_state: st.session_state.edit_trigger = 0
 
-# --- 3. CSS AESTHETIC (CORRECTED - NO RED BORDER) ---
+# --- 3. CSS AESTHETIC (VERSION 20 - AGGRESSIVE FIX) ---
 st.markdown(f"""
 <style>
     /* TITLE STYLE */
@@ -54,43 +54,42 @@ st.markdown(f"""
         line-height: 1.6;
     }}
     
-    /* LINK STYLE IN READ MODE (Blue & Underlined) */
     .quill-read-content a {{
         color: #1E90FF !important;
         text-decoration: underline !important;
         cursor: pointer !important;
     }}
 
-    /* --- INPUT BORDER FIX (REMOVES RED) --- */
+    /* --- BLACK BORDER FORCE FIX --- */
     
-    /* Input Fields (Title & Search) - Normal State */
-    .stTextInput > div > div {{
+    /* 1. Rimuove il bordo rosso dagli Input di testo (Titolo, Ricerca) */
+    div[data-baseweb="input"] {{
         border-color: #e0e0e0 !important;
+        border-radius: 5px !important;
     }}
     
-    /* Input Fields - Focused State (When you click) */
-    .stTextInput > div > div:focus-within {{
-        border-color: #333333 !important; /* Dark Grey Border */
-        box-shadow: none !important;      /* REMOVES RED GLOW */
+    /* Quando ci clicchi sopra (Focus) */
+    div[data-baseweb="input"]:focus-within {{
+        border: 1px solid #333333 !important; /* Grigio scuro */
+        box-shadow: none !important;          /* Rimuove l'alone rosso */
     }}
 
-    /* Text Area */
-    .stTextArea > div > div {{
-        border-color: #e0e0e0;
+    /* 2. Rimuove il bordo rosso dalle Text Area (se usate) */
+    div[data-baseweb="textarea"] {{
+        border-color: #e0e0e0 !important;
+        border-radius: 5px !important;
     }}
-    .stTextArea > div > div:focus-within {{
-        border-color: #333333 !important;
+    div[data-baseweb="textarea"]:focus-within {{
+        border: 1px solid #333333 !important;
         box-shadow: none !important;
     }}
 
-    /* Standard Input override generic */
+    /* 3. Nasconde eventuali focus ring residui */
     input:focus {{
-        border-color: #333333 !important;
         outline: none !important;
-        box-shadow: none !important;
     }}
-    
-    /* ANIMATION (2 SECONDS) */
+
+    /* ANIMATION */
     @keyframes fade-in {{
         0% {{ opacity: 0; letter-spacing: 0px; }}
         100% {{ opacity: 1; letter-spacing: 8px; }}

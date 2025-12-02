@@ -145,7 +145,7 @@ if client is None: st.stop()
 db = client.diario_db
 collection = db.note
 
-# --- 5. LOGICA DI ORDINAMENTO (MIGRATION) ---
+# --- 5. LOGIC & MIGRATION ---
 def ensure_custom_order():
     count_missing = collection.count_documents({"custom_order": {"$exists": False}})
     if count_missing > 0:
@@ -154,34 +154,6 @@ def ensure_custom_order():
             collection.update_one({"_id": note["_id"]}, {"$set": {"custom_order": index}})
 
 ensure_custom_order()
-
-def swap_notes(note_id, direction):
-    current_note = collection.find_one({"_id": note_id})
-    is_pinned = current_note.get("pinned", False)
-    
-    filter_group = {"deleted": {"$ne": True}, "pinned": is_pinned}
-    sorted_group = list(collection.find(filter_group).sort("custom_order", 1))
-    
-    current_index = -1
-    for idx, n in enumerate(sorted_group):
-        if n["_id"] == note_id:
-            current_index = idx
-            break
-    
-    if current_index == -1: return 
-    
-    target_index = current_index + direction
-    
-    if 0 <= target_index < len(sorted_group):
-        note_neighbor = sorted_group[target_index]
-        
-        order_current = current_note["custom_order"]
-        order_neighbor = note_neighbor["custom_order"]
-        
-        collection.update_one({"_id": note_id}, {"$set": {"custom_order": order_neighbor}})
-        collection.update_one({"_id": note_neighbor["_id"]}, {"$set": {"custom_order": order_current}})
-        
-        st.rerun()
 
 # --- UTILS ---
 def convert_notes_to_json(note_list):
@@ -278,6 +250,43 @@ def open_edit_popup(note_id, old_title, old_content, old_filename, old_labels):
             collection.update_one({"_id": note_id}, {"$set": {"file_name": None, "file_data": None}})
             st.rerun()
 
+# --- MOVE (SWAP) POPUP ---
+@st.dialog("Move Note", width="large")
+def open_move_popup(current_note_id, is_pinned):
+    st.write("Select the note you want to swap positions with:")
+    
+    # Filter candidates: Only non-deleted, same pinned status, AND NOT ITSELF
+    candidates = list(collection.find({
+        "deleted": {"$ne": True},
+        "pinned": is_pinned,
+        "_id": {"$ne": current_note_id}
+    }).sort("custom_order", 1))
+    
+    if not candidates:
+        st.warning("No other notes available to swap with.")
+        return
+
+    # Create a dictionary for the selectbox: {ID: "Title (Order)"}
+    # Using index+1 for user-friendly order number
+    options = {n["_id"]: f"{i+1}. {n['titolo']}" for i, n in enumerate(candidates)}
+    
+    selected_target_id = st.selectbox("Swap with:", options.keys(), format_func=lambda x: options[x])
+    
+    if st.button("Confirm Swap ⇄", type="primary"):
+        # 1. Get both documents
+        current_note = collection.find_one({"_id": current_note_id})
+        target_note = collection.find_one({"_id": selected_target_id})
+        
+        if current_note and target_note:
+            order_curr = current_note.get("custom_order", 0)
+            order_targ = target_note.get("custom_order", 0)
+            
+            # 2. Swap Values
+            collection.update_one({"_id": current_note_id}, {"$set": {"custom_order": order_targ}})
+            collection.update_one({"_id": selected_target_id}, {"$set": {"custom_order": order_curr}})
+            
+            st.rerun()
+
 @st.dialog("Trash", width="large")
 def open_trash():
     trash_notes = list(collection.find({"deleted": True}).sort("data", -1))
@@ -353,7 +362,7 @@ with st.expander(expander_label, expanded=False):
                     "file_data": bson.binary.Binary(uploaded_file.getvalue()) if uploaded_file else None
                 }
                 collection.insert_one(doc)
-                st.toast("Saved!", icon="✅") # FIX ICONA TOAST
+                st.toast("Saved!", icon="✅")
                 st.session_state.create_key = str(uuid.uuid4())
                 st.session_state.reset_counter += 1
                 st.rerun()
@@ -407,26 +416,22 @@ def render_notes_grid(note_list):
                 
                 st.markdown("---")
                 
-                c_mod, c_pin, c_del = st.columns(3)
-                if c_mod.button("✎ Edit", key=f"mod_{note['_id']}"):
+                # 4 BUTTONS IN ONE ROW
+                c_mod, c_pin, c_move, c_del = st.columns(4)
+                
+                if c_mod.button("✎", key=f"mod_{note['_id']}", help="Edit"):
                     open_edit_popup(note['_id'], note['titolo'], note['contenuto'], note.get("file_name"), labels)
                 
-                label_pin = "Unpin" if is_pinned else "⚲ Pin"
-                if c_pin.button(label_pin, key=f"pin_{note['_id']}"):
+                label_pin = "Unpin" if is_pinned else "⚲"
+                if c_pin.button(label_pin, key=f"pin_{note['_id']}", help="Pin/Unpin"):
                      collection.update_one({"_id": note['_id']}, {"$set": {"pinned": not is_pinned}})
                      st.rerun()
 
-                if c_del.button("🗑 Delete", key=f"del_{note['_id']}"):
+                if c_move.button("⇄", key=f"mv_{note['_id']}", help="Move"):
+                    open_move_popup(note['_id'], is_pinned)
+
+                if c_del.button("🗑", key=f"del_{note['_id']}", help="Delete"):
                     confirm_deletion(note['_id'])
-                
-                st.write("")
-                c_left, c_space, c_right = st.columns([1, 2, 1])
-                # FIX FRECCE MINIMAL
-                if c_left.button("←", key=f"mv_l_{note['_id']}", help="Move Back"):
-                    swap_notes(note['_id'], -1)
-                
-                if c_right.button("→", key=f"mv_r_{note['_id']}", help="Move Forward"):
-                    swap_notes(note['_id'], 1)
 
 if not all_notes:
     st.info("No notes found.")

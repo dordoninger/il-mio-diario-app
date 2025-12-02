@@ -16,7 +16,7 @@ if 'text_size' not in st.session_state: st.session_state.text_size = "16px"
 # Trigger to force updates
 if 'edit_trigger' not in st.session_state: st.session_state.edit_trigger = 0
 
-# --- 3. CSS AESTHETIC (VERSION 20 - AGGRESSIVE FIX) ---
+# --- 3. CSS AESTHETIC (FIXED: NO RED BORDERS) ---
 st.markdown(f"""
 <style>
     /* TITLE STYLE */
@@ -54,27 +54,28 @@ st.markdown(f"""
         line-height: 1.6;
     }}
     
+    /* Force Link Color in Read Mode */
     .quill-read-content a {{
         color: #1E90FF !important;
         text-decoration: underline !important;
         cursor: pointer !important;
     }}
 
-    /* --- BLACK BORDER FORCE FIX --- */
+    /* --- BLACK BORDER FORCE FIX (BUG 1 SOLVED) --- */
     
-    /* 1. Rimuove il bordo rosso dagli Input di testo (Titolo, Ricerca) */
+    /* 1. Input Fields (Title & Search) */
     div[data-baseweb="input"] {{
         border-color: #e0e0e0 !important;
         border-radius: 5px !important;
     }}
     
-    /* Quando ci clicchi sopra (Focus) */
+    /* Focus State - Dark Grey instead of Red */
     div[data-baseweb="input"]:focus-within {{
-        border: 1px solid #333333 !important; /* Grigio scuro */
-        box-shadow: none !important;          /* Rimuove l'alone rosso */
+        border: 1px solid #333333 !important; 
+        box-shadow: none !important;          
     }}
 
-    /* 2. Rimuove il bordo rosso dalle Text Area (se usate) */
+    /* 2. Text Area */
     div[data-baseweb="textarea"] {{
         border-color: #e0e0e0 !important;
         border-radius: 5px !important;
@@ -84,7 +85,7 @@ st.markdown(f"""
         box-shadow: none !important;
     }}
 
-    /* 3. Nasconde eventuali focus ring residui */
+    /* 3. Generic Focus Ring Removal */
     input:focus {{
         outline: none !important;
     }}
@@ -111,6 +112,7 @@ st.markdown(f"""
     }}
 </style>
 """, unsafe_allow_html=True)
+
 # --- 4. INIT & DB ---
 if 'first_load' not in st.session_state:
     placeholder = st.empty()
@@ -147,16 +149,10 @@ def convert_notes_to_json(note_list):
     return json.dumps(export_list, indent=4)
 
 def sanitize_links(html_content):
+    # BUG 2 SOLVED: Injects style and target directly into HTML
     if not html_content: return ""
-    
-    # Questa regex cerca i tag <a href="..."> generati da Quill
-    # e inserisce forzatamente:
-    # 1. target="_blank" (per aprire in nuova scheda)
-    # 2. style="..." (per forzare il colore azzurro e la sottolineatura)
-    
     pattern = r'<a href="([^"]*)"'
     replacement = r'<a href="\1" target="_blank" style="color: #1E90FF !important; text-decoration: underline !important; cursor: pointer;" rel="noopener noreferrer"'
-    
     return re.sub(pattern, replacement, html_content)
 
 # --- 6. TOOLBAR CONFIG ---
@@ -193,47 +189,57 @@ def open_settings():
         res = collection.delete_many({"deleted": True, "data": {"$lt": limit}})
         if res.deleted_count > 0: st.success(f"Cleaned {res.deleted_count} items.")
 
+# BUG 3 SOLVED: Function accepts ONLY ID to prevent "Nested Dialogs" error
 @st.dialog("Edit Note", width="large")
-@st.dialog("Edit Note", width="large")
-def open_edit_popup(note_id, old_title, old_content, old_filename):
+def open_edit_popup(note_id):
+    # Fetch data internally to ensure stability
+    note = collection.find_one({"_id": note_id})
+    
+    if not note:
+        st.error("Note not found.")
+        if st.button("Close"): st.rerun()
+        return
+
+    old_title = note.get('titolo', '')
+    old_content = note.get('contenuto', '')
+    old_filename = note.get('file_name', None)
+
     st.markdown("### Edit Content")
     
-    # Toggle per la modalità sicura (RAW HTML)
-    # Se vedi l'errore rosso, ATTIVA QUESTO per sbloccare la nota.
     col_safe, col_clean = st.columns([1, 1])
     with col_safe:
-        use_safe_mode = st.toggle("🛠️ Modalità Sicura (HTML)", help="Attivalo se vedi un errore o per modificare manualmente una formula.")
+        # BUG 3 Fix: Safe Mode to edit raw HTML formula code
+        mode = st.radio("Mode", ["Visual Editor", "Safe Mode (Raw HTML)"], horizontal=True, label_visibility="collapsed")
     
-    # Variabile locale per gestire il contenuto
     current_content = old_content
 
-    # LOGICA "RIPARA NOTA": Rimuove i tag formula che causano il crash e li trasforma in testo
+    # BUG 3 Fix: Emergency Button to strip formulas if crashed
     with col_clean:
-        if st.button("🚑 Converti Formule in Testo", help="Clicca se la nota non si apre. Trasforma le formule in testo semplice."):
-            # Cerca i tag <span class="ql-formula" data-value="x^2"></span> e li sostituisce con (Formula: x^2)
-            current_content = re.sub(
+        if st.button("🚑 Repair Note (Text Only)", help="Click if editor crashes. Converts formulas to text."):
+            clean_text = re.sub(
                 r'<span class="ql-formula" data-value="(.*?)">.*?</span>', 
                 r' **(Formula: \1)** ', 
                 old_content
             )
-            st.rerun() # Ricarica il popup con il contenuto pulito
+            collection.update_one({"_id": note_id}, {"$set": {"contenuto": clean_text}})
+            st.rerun()
 
-    # FORM di salvataggio
+    # FORM
     with st.form(key=f"edit_form_{note_id}"):
         new_title = st.text_input("Title", value=old_title)
         
-        if use_safe_mode:
-            st.info("💡 **Come modificare una formula qui:** Cerca la parte `data-value=\"...\"`. \n\n Esempio: per cambiare `e=mc^2` in `e=mc^3`, modifica `<span ... data-value=\"e=mc^3\">`.")
-            new_content = st.text_area("Raw HTML Code", value=current_content, height=300)
+        if mode == "Safe Mode (Raw HTML)":
+            st.info("Edit `data-value=\"...\"` to change formulas manually.")
+            new_content = st.text_area("Raw HTML", value=current_content, height=300)
         else:
-            # QUILL: Editor Visuale
-            unique_key = f"quill_edit_{note_id}_{st.session_state.edit_trigger}"
+            # Quill Editor
+            unique_key = f"quill_edit_{note_id}_{int(time.time())}"
             new_content = st_quill(value=current_content, toolbar=toolbar_config, html=True, key=unique_key)
         
         st.divider()
         st.markdown("### Attachments")
         
-        new_file = st.file_uploader("Replace File (Optional)", type=['pdf', 'docx', 'txt', 'mp3', 'wav', 'jpg', 'png'])
+        new_file = st.file_uploader("Replace File", type=['pdf', 'docx', 'txt', 'mp3', 'wav', 'jpg', 'png'])
         
         submitted = st.form_submit_button("Save Changes", type="primary")
         
@@ -248,12 +254,11 @@ def open_edit_popup(note_id, old_title, old_content, old_filename):
                 update_data["file_data"] = bson.binary.Binary(new_file.getvalue())
             
             collection.update_one({"_id": note_id}, {"$set": update_data})
-            st.session_state.edit_trigger += 1
             st.rerun()
 
     if old_filename:
-        st.info(f"Current file: **{old_filename}**")
-        if st.button("Remove current file", key=f"rm_file_{note_id}"):
+        st.caption(f"Attachment: {old_filename}")
+        if st.button("Remove file", key=f"rm_file_{note_id}"):
             collection.update_one({"_id": note_id}, {"$set": {"file_name": None, "file_data": None}})
             st.rerun()
 
@@ -302,7 +307,6 @@ with head_col3:
 st.markdown("---") 
 
 with st.expander("Create New Note"):
-    # Using FORM here too to prevent glitches during creation
     with st.form("create_note_form", clear_on_submit=True):
         title_input = st.text_input("Title")
         
@@ -353,7 +357,6 @@ else:
             icon_pin = "📌 " if is_pinned else ""
             
             with st.expander(f"{icon_pin}{icon_clip} {note['titolo']}"):
-                # Use sanitize_links to ensure clickability in read mode
                 safe_content = sanitize_links(note['contenuto'])
                 st.markdown(f"<div class='quill-read-content'>{safe_content}</div>", unsafe_allow_html=True)
                 
@@ -373,8 +376,9 @@ else:
                 st.markdown("---")
                 c_mod, c_pin, c_del = st.columns(3)
                 
+                # UPDATED CALL FOR BUG 3 FIX:
                 if c_mod.button("Edit", key=f"mod_{note['_id']}"):
-                    open_edit_popup(note['_id'], note['titolo'], note['contenuto'], note.get("file_name"))
+                    open_edit_popup(note['_id'])
                 
                 label_pin = "Unpin" if is_pinned else "Pin"
                 if c_pin.button(label_pin, key=f"pin_{note['_id']}"):

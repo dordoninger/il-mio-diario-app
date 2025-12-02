@@ -13,10 +13,11 @@ st.set_page_config(page_title="DOR NOTES", page_icon="📄", layout="wide")
 
 # --- 2. STATE MANAGEMENT ---
 if 'text_size' not in st.session_state: st.session_state.text_size = "16px"
-# Trigger to force updates (CRUCIALE per il salvataggio corretto)
 if 'edit_trigger' not in st.session_state: st.session_state.edit_trigger = 0
+# Gestione stato apertura tendina creazione (Richiesta 2)
+if 'create_expanded' not in st.session_state: st.session_state.create_expanded = False
 
-# --- 3. CSS AESTHETIC (FIXED: NO RED BORDERS) ---
+# --- 3. CSS AESTHETIC ---
 st.markdown(f"""
 <style>
     /* TITLE STYLE */
@@ -88,6 +89,16 @@ st.markdown(f"""
         display: flex;
         align-items: center;
     }}
+    
+    /* Styling per sezione Pinned */
+    .pinned-header {
+        font-size: 1.2rem;
+        font-weight: bold;
+        color: #333;
+        margin-bottom: 10px;
+        border-bottom: 2px solid #eee;
+        padding-bottom: 5px;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -166,7 +177,6 @@ def open_settings():
         res = collection.delete_many({"deleted": True, "data": {"$lt": limit}})
         if res.deleted_count > 0: st.success(f"Cleaned {res.deleted_count} items.")
 
-# --- EDIT POPUP (AUTOMATIC CLEAN MODE - SAVING FIXED) ---
 @st.dialog("Edit Note", width="large")
 def open_edit_popup(note_id):
     note = collection.find_one({"_id": note_id})
@@ -179,13 +189,12 @@ def open_edit_popup(note_id):
     raw_content = note.get('contenuto', '')
     old_filename = note.get('file_name', None)
 
-    # PULIZIA AUTOMATICA FORMULE
-    # Trasforma i tag HTML complessi in testo semplice per evitare crash
+    # PULIZIA FORMULE (Richiesta 1: Fix regex aggressivo)
+    # [\s\S]*? assicura che venga rimosso TUTTO il contenuto dello span, inclusi a capo e residui visivi
     clean_content = re.sub(
-        r'<span class="ql-formula"[^>]*data-value="([^"]+)"[^>]*>.*?</span>', 
+        r'<span class="ql-formula"[\s\S]*?data-value="([^"]+)"[\s\S]*?>[\s\S]*?</span>', 
         r' **(Formula: \1)** ', 
-        raw_content,
-        flags=re.DOTALL
+        raw_content
     )
 
     st.markdown("### Edit Content")
@@ -193,8 +202,6 @@ def open_edit_popup(note_id):
     with st.form(key=f"edit_form_{note_id}"):
         new_title = st.text_input("Title", value=old_title)
         
-        # FIX SALVATAGGIO: Usiamo edit_trigger come chiave.
-        # Questo assicura che l'editor non si resetti mentre scrivi o clicchi salva.
         unique_key = f"quill_edit_{note_id}_{st.session_state.edit_trigger}"
         new_content = st_quill(value=clean_content, toolbar=toolbar_config, html=True, key=unique_key)
         
@@ -215,9 +222,6 @@ def open_edit_popup(note_id):
                 update_data["file_data"] = bson.binary.Binary(new_file.getvalue())
             
             collection.update_one({"_id": note_id}, {"$set": update_data})
-            
-            # Incrementiamo il trigger SOLO dopo un salvataggio riuscito.
-            # Questo dice a Streamlit: "Ora puoi ricaricare l'editor pulito per la prossima volta"
             st.session_state.edit_trigger += 1
             st.rerun()
 
@@ -260,10 +264,14 @@ def confirm_deletion(note_id):
         st.rerun()
     if c2.button("Cancel"): st.rerun()
 
-# --- MAIN ---
+# --- MAIN LAYOUT ---
 
-head_col1, head_col2, head_col3 = st.columns([6, 1, 1])
-with head_col1: st.markdown("<div class='dor-title'>DOR NOTES</div>", unsafe_allow_html=True)
+# Richiesta 4: Allineamento tasti più vicino e a destra
+# Usiamo colonne asimmetriche: [Molto spazio per titolo, poco spazio btn1, poco spazio btn2]
+head_col1, head_col2, head_col3 = st.columns([8.5, 0.75, 0.75])
+
+with head_col1: 
+    st.markdown("<div class='dor-title'>DOR NOTES</div>", unsafe_allow_html=True)
 with head_col2: 
     if st.button("⚙️", help="Settings"): open_settings()
 with head_col3: 
@@ -271,7 +279,11 @@ with head_col3:
 
 st.markdown("---") 
 
-with st.expander("Create New Note"):
+# --- CREATE NOTE EXPANDER ---
+
+# Richiesta 2: Gestione automatica chiusura (expanded=...)
+with st.expander("Create New Note", expanded=st.session_state.create_expanded):
+    # clear_on_submit=True pulisce i campi
     with st.form("create_note_form", clear_on_submit=True):
         title_input = st.text_input("Title")
         
@@ -299,6 +311,8 @@ with st.expander("Create New Note"):
                 collection.insert_one(doc)
                 st.toast("Saved!", icon="✅")
                 time.sleep(0.5)
+                # Imposta expander a False per chiuderlo al riavvio
+                st.session_state.create_expanded = False
                 st.rerun()
             else:
                 st.warning("Title and content required.")
@@ -309,13 +323,17 @@ filter_query = {"deleted": {"$ne": True}}
 if query:
     filter_query = {"$and": [{"deleted": {"$ne": True}}, {"$or": [{"titolo": {"$regex": query, "$options": "i"}}, {"contenuto": {"$regex": query, "$options": "i"}}]}]}
 
-active_notes = list(collection.find(filter_query).sort([("pinned", -1), ("data", -1)]))
+# Recupero tutte le note attive
+all_notes = list(collection.find(filter_query).sort("data", -1))
 
-if not active_notes:
-    st.info("No notes found.")
-else:
+# Richiesta 3: Separazione Note Pinned
+pinned_notes = [n for n in all_notes if n.get("pinned", False)]
+other_notes = [n for n in all_notes if not n.get("pinned", False)]
+
+def render_notes_grid(note_list):
+    if not note_list: return
     cols = st.columns(3)
-    for index, note in enumerate(active_notes):
+    for index, note in enumerate(note_list):
         with cols[index % 3]:
             icon_clip = "🖇️" if note.get("file_name") else ""
             is_pinned = note.get("pinned", False)
@@ -351,3 +369,16 @@ else:
 
                 if c_del.button("Delete", key=f"del_{note['_id']}"):
                     confirm_deletion(note['_id'])
+
+if not all_notes:
+    st.info("No notes found.")
+else:
+    # Sezione PINNED
+    if pinned_notes:
+        st.markdown("<div class='pinned-header'>📌 Pinned Notes</div>", unsafe_allow_html=True)
+        render_notes_grid(pinned_notes)
+        st.markdown("---") # Divisore tra pinnate e normali
+        st.markdown("<div class='pinned-header'>📝 All Notes</div>", unsafe_allow_html=True)
+    
+    # Sezione ALTRE NOTE
+    render_notes_grid(other_notes)

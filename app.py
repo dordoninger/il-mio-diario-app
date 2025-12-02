@@ -194,34 +194,47 @@ def open_settings():
         if res.deleted_count > 0: st.success(f"Cleaned {res.deleted_count} items.")
 
 @st.dialog("Edit Note", width="large")
+@st.dialog("Edit Note", width="large")
 def open_edit_popup(note_id, old_title, old_content, old_filename):
     st.markdown("### Edit Content")
     
-    # --- SOLUTION FOR FORMULA CRASH: SAFE MODE ---
-    # Since formulas can crash the visual editor upon reloading,
-    # we provide a fallback mode to edit raw text.
-    use_safe_mode = st.toggle("⚠️ Safe Mode (Enable if editor crashes due to formula)")
+    # Toggle per la modalità sicura (RAW HTML)
+    # Se vedi l'errore rosso, ATTIVA QUESTO per sbloccare la nota.
+    col_safe, col_clean = st.columns([1, 1])
+    with col_safe:
+        use_safe_mode = st.toggle("🛠️ Modalità Sicura (HTML)", help="Attivalo se vedi un errore o per modificare manualmente una formula.")
     
-    # FORM to prevent reload issues
+    # Variabile locale per gestire il contenuto
+    current_content = old_content
+
+    # LOGICA "RIPARA NOTA": Rimuove i tag formula che causano il crash e li trasforma in testo
+    with col_clean:
+        if st.button("🚑 Converti Formule in Testo", help="Clicca se la nota non si apre. Trasforma le formule in testo semplice."):
+            # Cerca i tag <span class="ql-formula" data-value="x^2"></span> e li sostituisce con (Formula: x^2)
+            current_content = re.sub(
+                r'<span class="ql-formula" data-value="(.*?)">.*?</span>', 
+                r' **(Formula: \1)** ', 
+                old_content
+            )
+            st.rerun() # Ricarica il popup con il contenuto pulito
+
+    # FORM di salvataggio
     with st.form(key=f"edit_form_{note_id}"):
         new_title = st.text_input("Title", value=old_title)
         
         if use_safe_mode:
-            st.warning("You are editing raw HTML. Use this to delete broken formulas.")
-            new_content = st.text_area("Raw Content", value=old_content, height=300)
+            st.info("💡 **Come modificare una formula qui:** Cerca la parte `data-value=\"...\"`. \n\n Esempio: per cambiare `e=mc^2` in `e=mc^3`, modifica `<span ... data-value=\"e=mc^3\">`.")
+            new_content = st.text_area("Raw HTML Code", value=current_content, height=300)
         else:
-            # QUILL: Visual editor
-            # We use a unique key to ensure fresh load
+            # QUILL: Editor Visuale
             unique_key = f"quill_edit_{note_id}_{st.session_state.edit_trigger}"
-            new_content = st_quill(value=old_content, toolbar=toolbar_config, html=True, key=unique_key)
+            new_content = st_quill(value=current_content, toolbar=toolbar_config, html=True, key=unique_key)
         
         st.divider()
         st.markdown("### Attachments")
         
-        # File management inside form
         new_file = st.file_uploader("Replace File (Optional)", type=['pdf', 'docx', 'txt', 'mp3', 'wav', 'jpg', 'png'])
         
-        # Form Submit Button
         submitted = st.form_submit_button("Save Changes", type="primary")
         
         if submitted:
@@ -235,10 +248,9 @@ def open_edit_popup(note_id, old_title, old_content, old_filename):
                 update_data["file_data"] = bson.binary.Binary(new_file.getvalue())
             
             collection.update_one({"_id": note_id}, {"$set": update_data})
-            st.session_state.edit_trigger += 1 # Force refresh key for next time
+            st.session_state.edit_trigger += 1
             st.rerun()
 
-    # Option to remove file outside form (since it's a separate action)
     if old_filename:
         st.info(f"Current file: **{old_filename}**")
         if st.button("Remove current file", key=f"rm_file_{note_id}"):

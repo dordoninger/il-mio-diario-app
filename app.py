@@ -13,8 +13,9 @@ st.set_page_config(page_title="DOR NOTES", page_icon="📄", layout="wide")
 
 # --- 2. STATE MANAGEMENT ---
 if 'text_size' not in st.session_state: st.session_state.text_size = "16px"
+if 'edit_trigger' not in st.session_state: st.session_state.edit_trigger = 0
 
-# --- 3. CSS AESTHETIC (RESTORED BLACK BORDERS) ---
+# --- 3. CSS AESTHETIC (AGGRESSIVE BLACK BORDER FIX) ---
 st.markdown(f"""
 <style>
     /* TITLE STYLE */
@@ -51,29 +52,32 @@ st.markdown(f"""
         font-family: 'Georgia', serif;
         line-height: 1.6;
     }}
-    
-    /* LINKS IN READ MODE */
+    /* Make links visible and clickable in read mode */
     .quill-read-content a {{
         color: #1E90FF !important;
         text-decoration: underline !important;
         cursor: pointer !important;
     }}
 
-    /* --- INPUTS FOCUS FIX (BLACK BORDER) --- */
-    /* Target specifically the input box elements to override Streamlit Red */
-    .stTextInput > div > div {{
-        border-color: #e0e0e0;
-    }}
-    .stTextInput > div > div:focus-within {{
+    /* --- FINAL FIX FOR RED BORDERS --- */
+    /* We target the specific container Streamlit uses for focus rings */
+    
+    /* Text Input Focus */
+    div[data-testid="stTextInput"] > div > div:focus-within {{
         border-color: #000000 !important;
         box-shadow: 0 0 0 1px #000000 !important;
     }}
-    .stTextArea > div > div {{
-        border-color: #e0e0e0;
-    }}
-    .stTextArea > div > div:focus-within {{
+    
+    /* Text Area Focus */
+    div[data-testid="stTextArea"] > div > div:focus-within {{
         border-color: #000000 !important;
         box-shadow: 0 0 0 1px #000000 !important;
+    }}
+    
+    /* General Input Focus Override */
+    input:focus {{
+        border-color: #000000 !important;
+        outline: none !important;
     }}
     
     /* ANIMATION (2 SECONDS) */
@@ -136,6 +140,7 @@ def convert_notes_to_json(note_list):
 
 def sanitize_links(html_content):
     if not html_content: return ""
+    # Regex to inject target="_blank" so links open in new tab
     return re.sub(r'<a href="(.*?)"', r'<a href="\1" target="_blank" rel="noopener noreferrer"', html_content)
 
 # --- 6. TOOLBAR CONFIG ---
@@ -147,8 +152,7 @@ toolbar_config = [
     [{ 'color': [] }, { 'background': [] }],
     [{ 'font': [] }],
     [{ 'align': [] }],
-    ['image', 'formula'],
-    ['link'],
+    ['link', 'image', 'formula'],
 ]
 
 # --- 7. POPUPS (DIALOGS) ---
@@ -176,51 +180,53 @@ def open_settings():
 def open_edit_popup(note_id, old_title, old_content, old_filename):
     st.markdown("### Edit Content")
     
-    # Session state for title to avoid reload issues
-    if f"edit_title_{note_id}" not in st.session_state:
-        st.session_state[f"edit_title_{note_id}"] = old_title
+    # --- CRITICAL FIX: USING st.form ---
+    # Placing the editor inside a FORM prevents Streamlit from 
+    # re-running the script while you interact with the editor.
+    # This solves the "Link disappears" and "Formula Crash" issues.
     
-    new_title = st.text_input("Title", key=f"edit_title_{note_id}")
-    
-    # --- BUG FIX: STABLE KEY ---
-    # We use a FIXED key based on the Note ID. 
-    # This prevents the editor from re-mounting on every keystroke/interaction.
-    stable_key = f"quill_editor_fixed_{note_id}"
-    
-    new_content = st_quill(
-        value=old_content, 
-        toolbar=toolbar_config, 
-        html=True, 
-        key=stable_key
-    )
-    
-    st.divider()
-    st.markdown("### Attachments")
-    
+    with st.form(key=f"edit_form_{note_id}"):
+        new_title = st.text_input("Title", value=old_title)
+        
+        # We use a unique key to ensure fresh load
+        unique_key = f"quill_edit_{note_id}_{st.session_state.edit_trigger}"
+        
+        new_content = st_quill(
+            value=old_content, 
+            toolbar=toolbar_config, 
+            html=True, 
+            key=unique_key
+        )
+        
+        st.divider()
+        st.markdown("### Attachments")
+        
+        # File management inside form
+        new_file = st.file_uploader("Replace File (Optional)", type=['pdf', 'docx', 'txt', 'mp3', 'wav', 'jpg', 'png'])
+        
+        # Form Submit Button
+        submitted = st.form_submit_button("Save Changes", type="primary")
+        
+        if submitted:
+            update_data = {
+                "titolo": new_title, 
+                "contenuto": new_content, 
+                "data": datetime.now()
+            }
+            if new_file:
+                update_data["file_name"] = new_file.name
+                update_data["file_data"] = bson.binary.Binary(new_file.getvalue())
+                
+            collection.update_one({"_id": note_id}, {"$set": update_data})
+            st.session_state.edit_trigger += 1 # Force refresh key for next time
+            st.rerun()
+
+    # Option to remove file outside form (since it's a separate action)
     if old_filename:
-        c1, c2 = st.columns([3, 1])
-        c1.info(f"File: **{old_filename}**")
-        if c2.button("Remove", key=f"rm_file_{note_id}"):
+        st.info(f"Current file: **{old_filename}**")
+        if st.button("Remove current file", key=f"rm_file_{note_id}"):
             collection.update_one({"_id": note_id}, {"$set": {"file_name": None, "file_data": None}})
             st.rerun()
-            
-    new_file = st.file_uploader("Replace File", type=['pdf', 'docx', 'txt', 'mp3', 'wav', 'jpg', 'png'], key=f"up_{note_id}")
-    
-    if st.button("Save Changes", type="primary"):
-        update_data = {
-            "titolo": new_title, 
-            "contenuto": new_content, 
-            "data": datetime.now()
-        }
-        if new_file:
-            update_data["file_name"] = new_file.name
-            update_data["file_data"] = bson.binary.Binary(new_file.getvalue())
-            
-        collection.update_one({"_id": note_id}, {"$set": update_data})
-        # Clear session state key to allow fresh load next time
-        if f"edit_title_{note_id}" in st.session_state:
-            del st.session_state[f"edit_title_{note_id}"]
-        st.rerun()
 
 @st.dialog("Trash", width="large")
 def open_trash():
@@ -267,34 +273,37 @@ with head_col3:
 st.markdown("---") 
 
 with st.expander("Create New Note"):
-    title_input = st.text_input("Title", key=f"tit_{st.session_state.editor_key}")
-    
-    content_input = st_quill(
-        placeholder="Write your thoughts here...",
-        html=True,
-        toolbar=toolbar_config,
-        key=f"quill_{st.session_state.editor_key}"
-    )
-    uploaded_file = st.file_uploader("Attachment", type=['pdf', 'docx', 'txt', 'mp3', 'wav', 'jpg', 'png'], key=f"file_{st.session_state.editor_key}")
-    
-    if st.button("Save Note"):
-        if title_input and content_input:
-            doc = {
-                "titolo": title_input,
-                "contenuto": content_input,
-                "data": datetime.now(),
-                "tipo": "testo_ricco",
-                "deleted": False, "pinned": False,
-                "file_name": uploaded_file.name if uploaded_file else None,
-                "file_data": bson.binary.Binary(uploaded_file.getvalue()) if uploaded_file else None
-            }
-            collection.insert_one(doc)
-            st.toast("Saved!", icon="✅")
-            st.session_state.editor_key = str(uuid.uuid4())
-            time.sleep(0.2)
-            st.rerun()
-        else:
-            st.warning("Title and content required.")
+    # Using FORM here too to prevent glitches during creation
+    with st.form("create_note_form", clear_on_submit=True):
+        title_input = st.text_input("Title")
+        
+        content_input = st_quill(
+            placeholder="Write your thoughts here...",
+            html=True,
+            toolbar=toolbar_config,
+            key="quill_create_final"
+        )
+        uploaded_file = st.file_uploader("Attachment", type=['pdf', 'docx', 'txt', 'mp3', 'wav', 'jpg', 'png'])
+        
+        submitted_create = st.form_submit_button("Save Note")
+        
+        if submitted_create:
+            if title_input and content_input:
+                doc = {
+                    "titolo": title_input,
+                    "contenuto": content_input,
+                    "data": datetime.now(),
+                    "tipo": "testo_ricco",
+                    "deleted": False, "pinned": False,
+                    "file_name": uploaded_file.name if uploaded_file else None,
+                    "file_data": bson.binary.Binary(uploaded_file.getvalue()) if uploaded_file else None
+                }
+                collection.insert_one(doc)
+                st.toast("Saved!", icon="✅")
+                time.sleep(0.5)
+                st.rerun()
+            else:
+                st.warning("Title and content required.")
 
 st.write("")
 query = st.text_input("🔍", placeholder="Search...", label_visibility="collapsed")

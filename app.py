@@ -97,21 +97,21 @@ st.markdown(f"""
         text-transform: uppercase;
     }}
 
-    /* BLACK BORDER FIX (ALL INPUTS) */
+    /* BLACK BORDER FIX (Generico per tutti gli input) */
     div[data-baseweb="input"] {{ border-color: #e0e0e0 !important; border-radius: 8px !important; }}
     div[data-baseweb="input"]:focus-within {{ border: 1px solid #000000 !important; box-shadow: none !important; }}
     
     div[data-baseweb="textarea"] {{ border-color: #e0e0e0 !important; border-radius: 8px !important; }}
     div[data-baseweb="textarea"]:focus-within {{ border: 1px solid #000000 !important; box-shadow: none !important; }}
     
-    /* --- NUOVO STILE PER NUMBER INPUTS (Width/Height) --- */
+    /* --- FIX AGGRESSIVO NUMBER INPUT (Width/Height) --- */
     
     /* 1. Nasconde i pulsanti +/- */
     div[data-testid="stNumberInput"] button {{
         display: none !important;
     }}
 
-    /* 2. Stile base del contenitore numero */
+    /* 2. Stile del contenitore a riposo */
     div[data-testid="stNumberInput"] div[data-baseweb="input"] {{
         border: 1px solid #e0e0e0 !important;
         border-radius: 8px !important;
@@ -119,15 +119,26 @@ st.markdown(f"""
         padding-right: 0px !important;
     }}
 
-    /* 3. Stile quando l'utente clicca (FOCUS) - NERO */
+    /* 3. Stile del contenitore QUANDO CLICCATO (FOCUS) */
+    /* Qui rimuoviamo box-shadow (alone rosso) e forziamo il bordo nero */
     div[data-testid="stNumberInput"] div[data-baseweb="input"]:focus-within {{
         border: 1px solid #000000 !important;
         box-shadow: none !important;
         outline: none !important;
     }}
+    
+    /* 4. Colore del cursore che lampeggia e del testo */
+    div[data-testid="stNumberInput"] input {{
+        caret-color: #000000 !important;
+        color: #000000 !important;
+    }}
 
-    /* Input generico focus */
-    input:focus {{ outline: none !important; border-color: #000000 !important; }}
+    /* 5. Input generici focus override (sicurezza extra) */
+    input:focus {{ 
+        outline: none !important; 
+        border-color: #000000 !important; 
+        box-shadow: none !important;
+    }}
 
     /* ANIMATION */
     @keyframes fade-in {{

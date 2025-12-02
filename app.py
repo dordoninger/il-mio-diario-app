@@ -146,60 +146,41 @@ db = client.diario_db
 collection = db.note
 
 # --- 5. LOGICA DI ORDINAMENTO (MIGRATION) ---
-# Questa funzione controlla se le note hanno un campo "custom_order".
-# Se non ce l'hanno (note vecchie), glielo assegna basandosi sulla data.
 def ensure_custom_order():
-    # Conta note senza ordine
     count_missing = collection.count_documents({"custom_order": {"$exists": False}})
     if count_missing > 0:
-        # Prende tutte le note ordinate per data (le più vecchie prima)
         all_notes = list(collection.find().sort("data", 1))
         for index, note in enumerate(all_notes):
-            # Assegna un indice progressivo (0, 1, 2...)
             collection.update_one({"_id": note["_id"]}, {"$set": {"custom_order": index}})
 
 ensure_custom_order()
 
-# Funzione per scambiare posto
 def swap_notes(note_id, direction):
-    # direction: -1 (sposta indietro/sinistra), +1 (sposta avanti/destra)
-    
-    # 1. Recupera la lista ordinata attuale
-    # Escludiamo le note cancellate e pinned (pinned stanno in un gruppo a parte)
     current_note = collection.find_one({"_id": note_id})
     is_pinned = current_note.get("pinned", False)
     
-    # Filtro: lavoriamo solo nel gruppo di appartenenza (Pinned o Normali)
     filter_group = {"deleted": {"$ne": True}, "pinned": is_pinned}
-    
-    # Lista ordinata per custom_order
     sorted_group = list(collection.find(filter_group).sort("custom_order", 1))
     
-    # Trova l'indice della nota corrente nella lista
     current_index = -1
     for idx, n in enumerate(sorted_group):
         if n["_id"] == note_id:
             current_index = idx
             break
     
-    if current_index == -1: return # Errore
+    if current_index == -1: return 
     
-    # Calcola indice di destinazione
     target_index = current_index + direction
     
-    # Controlla se lo scambio è possibile (non siamo ai bordi)
     if 0 <= target_index < len(sorted_group):
         note_neighbor = sorted_group[target_index]
         
-        # Scambia i valori di custom_order nel DB
         order_current = current_note["custom_order"]
         order_neighbor = note_neighbor["custom_order"]
         
-        # Per sicurezza, scambiamo i valori
         collection.update_one({"_id": note_id}, {"$set": {"custom_order": order_neighbor}})
         collection.update_one({"_id": note_neighbor["_id"]}, {"$set": {"custom_order": order_current}})
         
-        # Reload rapido
         st.rerun()
 
 # --- UTILS ---
@@ -281,7 +262,7 @@ def open_edit_popup(note_id, old_title, old_content, old_filename, old_labels):
                 "titolo": new_title, 
                 "contenuto": new_content, 
                 "labels": labels_list,
-                "data": datetime.now() # Modifying date does NOT change order anymore
+                "data": datetime.now() 
             }
             if new_file:
                 update_data["file_name"] = new_file.name
@@ -357,7 +338,6 @@ with st.expander(expander_label, expanded=False):
             if title_input and content_input:
                 labels_list = [tag.strip() for tag in labels_input.split(",") if tag.strip()]
                 
-                # Calcolo NUOVO ORDINE: (Massimo ordine attuale + 1)
                 last_note = collection.find_one(sort=[("custom_order", -1)])
                 new_order = (last_note["custom_order"] + 1) if last_note and "custom_order" in last_note else 0
                 
@@ -366,14 +346,14 @@ with st.expander(expander_label, expanded=False):
                     "contenuto": content_input,
                     "labels": labels_list,
                     "data": datetime.now(),
-                    "custom_order": new_order, # NEW NOTES GO TO BOTTOM
+                    "custom_order": new_order, 
                     "tipo": "testo_ricco",
                     "deleted": False, "pinned": False,
                     "file_name": uploaded_file.name if uploaded_file else None,
                     "file_data": bson.binary.Binary(uploaded_file.getvalue()) if uploaded_file else None
                 }
                 collection.insert_one(doc)
-                st.toast("Saved!", icon="✓")
+                st.toast("Saved!", icon="✅") # FIX ICONA TOAST
                 st.session_state.create_key = str(uuid.uuid4())
                 st.session_state.reset_counter += 1
                 st.rerun()
@@ -396,7 +376,6 @@ if query:
         ]
     }
 
-# ORDER BY CUSTOM_ORDER (Fixed Position) instead of Date
 all_notes = list(collection.find(filter_query).sort("custom_order", 1)) 
 
 pinned_notes = [n for n in all_notes if n.get("pinned", False)]
@@ -404,10 +383,9 @@ other_notes = [n for n in all_notes if not n.get("pinned", False)]
 
 def render_notes_grid(note_list):
     if not note_list: return
-    # 4 COLUMNS LAYOUT
     cols = st.columns(4)
     for index, note in enumerate(note_list):
-        with cols[index % 4]: # Cycle through 0,1,2,3
+        with cols[index % 4]: 
             icon_clip = "🖇️" if note.get("file_name") else ""
             is_pinned = note.get("pinned", False)
             icon_pin = "" if is_pinned else ""
@@ -429,7 +407,6 @@ def render_notes_grid(note_list):
                 
                 st.markdown("---")
                 
-                # ROW 1: ACTIONS
                 c_mod, c_pin, c_del = st.columns(3)
                 if c_mod.button("✎ Edit", key=f"mod_{note['_id']}"):
                     open_edit_popup(note['_id'], note['titolo'], note['contenuto'], note.get("file_name"), labels)
@@ -442,13 +419,13 @@ def render_notes_grid(note_list):
                 if c_del.button("🗑 Delete", key=f"del_{note['_id']}"):
                     confirm_deletion(note['_id'])
                 
-                # ROW 2: REORDERING
                 st.write("")
                 c_left, c_space, c_right = st.columns([1, 2, 1])
-                if c_left.button("⬅️", key=f"mv_l_{note['_id']}", help="Move Back"):
+                # FIX FRECCE MINIMAL
+                if c_left.button("←", key=f"mv_l_{note['_id']}", help="Move Back"):
                     swap_notes(note['_id'], -1)
                 
-                if c_right.button("➡️", key=f"mv_r_{note['_id']}", help="Move Forward"):
+                if c_right.button("→", key=f"mv_r_{note['_id']}", help="Move Forward"):
                     swap_notes(note['_id'], 1)
 
 if not all_notes:

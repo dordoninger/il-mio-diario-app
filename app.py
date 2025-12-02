@@ -1,6 +1,7 @@
 import streamlit as st
 import pymongo
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
+import calendar
 from streamlit_quill import st_quill
 from streamlit_drawable_canvas import st_canvas
 from PIL import Image
@@ -17,8 +18,12 @@ st.set_page_config(page_title="DOR NOTES", page_icon="📄", layout="wide")
 # --- 2. STATE MANAGEMENT ---
 if 'text_size' not in st.session_state: st.session_state.text_size = "16px"
 if 'edit_trigger' not in st.session_state: st.session_state.edit_trigger = 0
-if 'create_key' not in st.session_state: st.session_state.create_key = str(uuid.uuid4())
 if 'reset_counter' not in st.session_state: st.session_state.reset_counter = 0
+if 'create_key' not in st.session_state: st.session_state.create_key = str(uuid.uuid4())
+
+# CALENDAR STATE
+if 'cal_year' not in st.session_state: st.session_state.cal_year = datetime.now().year
+if 'cal_month' not in st.session_state: st.session_state.cal_month = datetime.now().month
 
 # GRID COLUMNS SETTING
 if 'grid_cols' not in st.session_state: st.session_state.grid_cols = 4
@@ -92,17 +97,13 @@ st.markdown(f"""
         text-transform: uppercase;
     }}
 
-    /* BLACK BORDER FIX (ALL INPUTS) */
+    /* BLACK BORDER FIX */
     div[data-baseweb="input"] {{ border-color: #e0e0e0 !important; border-radius: 8px !important; }}
     div[data-baseweb="input"]:focus-within {{ border: 1px solid #333333 !important; box-shadow: none !important; }}
-    
     div[data-baseweb="textarea"] {{ border-color: #e0e0e0 !important; border-radius: 8px !important; }}
     div[data-baseweb="textarea"]:focus-within {{ border: 1px solid #333333 !important; box-shadow: none !important; }}
-    
     div[data-testid="stNumberInput"] > div > div {{ border-color: #e0e0e0 !important; border-radius: 8px !important; }}
     div[data-testid="stNumberInput"] > div > div:focus-within {{ border: 1px solid #333333 !important; box-shadow: none !important; }}
-    div[data-testid="stNumberInput"] input:focus {{ border-color: transparent !important; outline: none !important; }}
-
     input:focus {{ outline: none !important; border-color: #000000 !important; }}
 
     /* ANIMATION */
@@ -123,17 +124,36 @@ st.markdown(f"""
     
     div[data-testid="column"] {{ display: flex; align-items: center; }}
     
-    /* PINNED HEADER */
-    .pinned-header {{
-        font-family: 'Helvetica Neue', 'Helvetica', 'Arial', sans-serif;
-        font-weight: 300;
-        font-size: 1.1rem;
-        color: #000;
-        margin-top: 20px;
+    /* CALENDAR DAY ROW */
+    .cal-row {{
+        padding: 15px;
+        border: 1px solid #eee;
+        border-radius: 8px;
         margin-bottom: 10px;
-        border-bottom: 1px solid #eee;
-        padding-bottom: 5px;
+        background-color: white;
+        transition: 0.2s;
+        cursor: pointer;
+    }}
+    .cal-row:hover {{
+        border-color: #000;
+        background-color: #fafafa;
+    }}
+    .cal-date {{
+        font-size: 1.5rem;
+        font-weight: bold;
+        color: #333;
+    }}
+    .cal-day {{
+        color: #888;
+        font-size: 0.9rem;
+        text-transform: uppercase;
         letter-spacing: 1px;
+    }}
+    
+    /* TABS STYLE OVERRIDE */
+    button[data-baseweb="tab"] {{
+        font-size: 1.2rem;
+        font-weight: 400;
     }}
 </style>
 """, unsafe_allow_html=True)
@@ -240,15 +260,110 @@ def open_settings():
         res = collection.delete_many({"deleted": True, "data": {"$lt": limit}})
         if res.deleted_count > 0: st.success(f"Cleaned {res.deleted_count} items.")
 
+# --- COMMON FUNCTIONS (USED BY DASHBOARD AND CALENDAR) ---
+
+def logic_save_note(title, labels_str, content, file, note_type, drawing_res, date_ref=None):
+    if (note_type == "Text" and title and content) or (note_type == "Drawing" and title and drawing_res.image_data is not None):
+        labels_list = [tag.strip() for tag in labels_str.split(",") if tag.strip()]
+        
+        # Order logic (Only relevant for Dashboard, but we set it anyway)
+        last_note = collection.find_one(sort=[("custom_order", -1)])
+        new_order = (last_note["custom_order"] + 1) if last_note and "custom_order" in last_note else 0
+        
+        doc = {
+            "titolo": title,
+            "labels": labels_list,
+            "data": datetime.now(),
+            "custom_order": new_order,
+            "tipo": "testo_ricco" if note_type == "Text" else "disegno",
+            "deleted": False, "pinned": False,
+            "calendar_date": date_ref # THIS IS THE KEY (Null for Dashboard, "YYYY-MM-DD" for Calendar)
+        }
+
+        if note_type == "Text":
+            doc["contenuto"] = content
+            doc["file_name"] = file.name if file else None
+            doc["file_data"] = bson.binary.Binary(file.getvalue()) if file else None
+        else:
+            doc["contenuto"] = "Drawing"
+            img = Image.fromarray(drawing_res.image_data.astype('uint8'), 'RGBA')
+            buf = io.BytesIO()
+            img.save(buf, format='PNG')
+            val_bytes = buf.getvalue()
+            if len(val_bytes) > 0:
+                doc["file_data"] = bson.binary.Binary(val_bytes)
+                doc["file_name"] = "drawing.png"
+                doc["drawing_json"] = json.dumps(drawing_res.json_data)
+            else:
+                return False
+
+        collection.insert_one(doc)
+        return True
+    return False
+
+def render_create_note_form(key_suffix, date_ref=None):
+    # If date_ref is present, we are in Calendar Mode
+    
+    note_type = st.radio("Type:", ["Text", "Drawing"], horizontal=True, key=f"nt_{key_suffix}")
+    
+    if note_type == "Text":
+        with st.form(f"form_{key_suffix}", clear_on_submit=True):
+            title = st.text_input("Title")
+            labels = st.text_input("Labels (comma separated)")
+            content = st_quill(placeholder="Write here...", html=True, toolbar=toolbar_config)
+            f_up = st.file_uploader("Attachment", type=['pdf', 'docx', 'txt', 'mp3', 'wav', 'jpg', 'png'])
+            if st.form_submit_button("Save Note"):
+                if logic_save_note(title, labels, content, f_up, "Text", None, date_ref):
+                    st.toast("Saved!", icon="✅")
+                    if not date_ref: # Dashboard logic
+                        st.session_state.create_key = str(uuid.uuid4())
+                        st.session_state.reset_counter += 1
+                    st.rerun()
+                else:
+                    st.warning("Missing info")
+    else:
+        title = st.text_input("Title", key=f"dt_{key_suffix}")
+        labels = st.text_input("Labels", key=f"dl_{key_suffix}")
+        
+        c_w, c_h = st.columns(2)
+        cw = c_w.number_input("Width", 300, 2000, 600, key=f"cw_{key_suffix}")
+        ch = c_h.number_input("Height", 300, 2000, 400, key=f"ch_{key_suffix}")
+        
+        c1, c2, c3 = st.columns([1, 2, 1])
+        with c1:
+            st.markdown("<b>Set colour</b>", unsafe_allow_html=True)
+            bc = st.color_picker("Color", "#000000", key=f"cc_{key_suffix}", label_visibility="collapsed")
+        with c2:
+            tl = st.radio("Tool", ["Pen", "Pencil", "Highlighter", "Eraser"], horizontal=True, key=f"tt_{key_suffix}")
+        with c3:
+            sw = st.slider("Width", 1, 30, 2, key=f"ss_{key_suffix}")
+            
+        if tl == "Eraser": bc = "#ffffff"
+        fc = bc
+        if tl == "Pencil": fc = hex_to_rgba(bc, 0.7); sw = 2 if sw > 5 else sw
+        elif tl == "Highlighter": fc = hex_to_rgba(bc, 0.4); sw = 15 if sw < 10 else sw
+        elif tl == "Eraser": sw = 20 if sw < 10 else sw
+        
+        ckey = f"cv_{cw}_{ch}_{key_suffix}"
+        res = st_canvas(fill_color="rgba(0,0,0,0)", stroke_width=sw, stroke_color=fc, background_color="#FFF", update_streamlit=True, height=ch, width=cw, drawing_mode="freedraw", key=ckey)
+        
+        if st.button("Save Drawing", key=f"bs_{key_suffix}"):
+            if logic_save_note(title, labels, None, None, "Drawing", res, date_ref):
+                st.toast("Saved!", icon="✅")
+                if not date_ref:
+                    st.session_state.create_key = str(uuid.uuid4())
+                    st.session_state.reset_counter += 1
+                st.rerun()
+            else:
+                st.warning("Draw something")
+
 @st.dialog("Edit Note", width="large")
 def open_edit_popup(note_id, old_title, old_content, old_filename, old_labels, note_type, drawing_data=None):
     st.markdown("### Edit Content")
     labels_str = ", ".join(old_labels) if old_labels else ""
-    
     with st.form(key=f"edit_form_{note_id}"):
         new_title = st.text_input("Title", value=old_title)
         new_labels_str = st.text_input("Labels", value=labels_str)
-        
         new_content = old_content
         
         if note_type == "disegno":
@@ -260,48 +375,23 @@ def open_edit_popup(note_id, old_title, old_content, old_filename, old_labels, n
                 tool = st.radio("Tool", ["Pen", "Pencil", "Highlighter", "Eraser"], horizontal=True, key=f"d_t_{note_id}")
             with c_width:
                 stroke_width = st.slider("Width", 1, 30, 2, key=f"d_w_{note_id}")
-            
             if tool == "Eraser": base_color = "#ffffff"
-            
             final_color = base_color
-            if tool == "Pencil":
-                final_color = hex_to_rgba(base_color, 0.7) 
-                if stroke_width > 5: stroke_width = 2
-            elif tool == "Highlighter":
-                final_color = hex_to_rgba(base_color, 0.4) 
-                if stroke_width < 10: stroke_width = 15
-            elif tool == "Eraser":
-                if stroke_width < 10: stroke_width = 20
-
-            init_draw = json.loads(drawing_data) if drawing_data else None
+            if tool == "Pencil": final_color = hex_to_rgba(base_color, 0.7); stroke_width = 2 if stroke_width > 5 else stroke_width
+            elif tool == "Highlighter": final_color = hex_to_rgba(base_color, 0.4); stroke_width = 15 if stroke_width < 10 else stroke_width
+            elif tool == "Eraser": stroke_width = 20 if stroke_width < 10 else stroke_width
             
-            canvas_result = st_canvas(
-                fill_color="rgba(0,0,0,0)",
-                stroke_width=stroke_width,
-                stroke_color=final_color,
-                background_color="#FFFFFF",
-                initial_drawing=init_draw,
-                update_streamlit=True,
-                height=450,
-                drawing_mode="freedraw",
-                key=f"canvas_edit_{note_id}",
-            )
+            init_draw = json.loads(drawing_data) if drawing_data else None
+            canvas_result = st_canvas(fill_color="rgba(0,0,0,0)", stroke_width=stroke_width, stroke_color=final_color, background_color="#FFFFFF", initial_drawing=init_draw, update_streamlit=True, height=450, drawing_mode="freedraw", key=f"canvas_edit_{note_id}")
         else:
             unique_key = f"quill_edit_{note_id}_{st.session_state.edit_trigger}"
             new_content = st_quill(value=old_content, toolbar=toolbar_config, html=True, key=unique_key)
             st.divider()
-            st.markdown("### Attachments")
             new_file = st.file_uploader("Replace File", type=['pdf', 'docx', 'txt', 'mp3', 'wav', 'jpg', 'png'])
 
-        submitted = st.form_submit_button("Save Changes", type="primary")
-        
-        if submitted:
+        if st.form_submit_button("Save Changes", type="primary"):
             labels_list = [tag.strip() for tag in new_labels_str.split(",") if tag.strip()]
-            update_data = {
-                "titolo": new_title, 
-                "labels": labels_list,
-                "data": datetime.now() 
-            }
+            update_data = {"titolo": new_title, "labels": labels_list, "data": datetime.now()}
             
             if note_type == "disegno":
                 if canvas_result.image_data is not None:
@@ -332,67 +422,24 @@ def open_edit_popup(note_id, old_title, old_content, old_filename, old_labels, n
 @st.dialog("Move Note", width="large")
 def open_move_popup(current_note_id):
     st.write("Select the note you want to swap positions with:")
-    candidates = list(collection.find({
-        "deleted": {"$ne": True},
-        "_id": {"$ne": current_note_id}
-    }).sort("custom_order", 1))
+    candidates = list(collection.find({"deleted": {"$ne": True}, "_id": {"$ne": current_note_id}, "calendar_date": None}).sort("custom_order", 1)) # Only Dashboard notes
+    if not candidates: st.warning("No notes available."); return
+    options = {n["_id"]: f"{'📌' if n.get('pinned') else '📄'} {n['titolo']}" for n in candidates}
+    selected_target_id = st.selectbox("Swap with:", options.keys(), format_func=lambda x: options[x])
     
-    if not candidates:
-        st.warning("No other notes available.")
-        return
-
-    def get_label(n):
-        status = "📌" if n.get("pinned", False) else "📄"
-        return f"{status} {n['titolo']}"
-
-    options = {n["_id"]: get_label(n) for n in candidates}
-    selected_target_id = st.selectbox("Select Target Note:", options.keys(), format_func=lambda x: options[x])
-    
-    # --- DUAL ACTION COLUMNS ---
     c_swap, c_insert = st.columns(2)
-    
-    with c_swap:
-        if st.button("Swap Positions ⇄", use_container_width=True):
-            current_note = collection.find_one({"_id": current_note_id})
-            target_note = collection.find_one({"_id": selected_target_id})
-            if current_note and target_note:
-                order_curr = current_note.get("custom_order", 0)
-                pinned_curr = current_note.get("pinned", False)
-                order_targ = target_note.get("custom_order", 0)
-                pinned_targ = target_note.get("pinned", False)
-                
-                collection.update_one({"_id": current_note_id}, {"$set": {"custom_order": order_targ, "pinned": pinned_targ}})
-                collection.update_one({"_id": selected_target_id}, {"$set": {"custom_order": order_curr, "pinned": pinned_curr}})
-                st.rerun()
-    
-    with c_insert:
-        if st.button("Insert Before ⬆", use_container_width=True):
-            current_note = collection.find_one({"_id": current_note_id})
-            target_note = collection.find_one({"_id": selected_target_id})
-            
-            if current_note and target_note:
-                target_order = target_note.get("custom_order", 0)
-                target_pinned = target_note.get("pinned", False)
-                
-                # Update current note to take target's place/properties
-                collection.update_one({"_id": current_note_id}, {"$set": {"custom_order": target_order, "pinned": target_pinned}})
-                
-                # Shift all notes (>= target_order) down by 1
-                # Filtering to avoid shifting the note we just moved (if it was already in list)
-                collection.update_many(
-                    {
-                        "custom_order": {"$gte": target_order},
-                        "_id": {"$ne": current_note_id} 
-                    },
-                    {"$inc": {"custom_order": 1}}
-                )
-                
-                # Re-normalize orders to prevent gaps
-                all_sorted = list(collection.find().sort("custom_order", 1))
-                for i, n in enumerate(all_sorted):
-                    collection.update_one({"_id": n["_id"]}, {"$set": {"custom_order": i}})
-                
-                st.rerun()
+    if c_swap.button("Swap Positions ⇄", use_container_width=True):
+        n1 = collection.find_one({"_id": current_note_id})
+        n2 = collection.find_one({"_id": selected_target_id})
+        collection.update_one({"_id": current_note_id}, {"$set": {"custom_order": n2["custom_order"], "pinned": n2["pinned"]}})
+        collection.update_one({"_id": selected_target_id}, {"$set": {"custom_order": n1["custom_order"], "pinned": n1["pinned"]}})
+        st.rerun()
+    if c_insert.button("Insert Before ⬆", use_container_width=True):
+        n2 = collection.find_one({"_id": selected_target_id})
+        t_order = n2["custom_order"]
+        collection.update_one({"_id": current_note_id}, {"$set": {"custom_order": t_order, "pinned": n2["pinned"]}})
+        collection.update_many({"custom_order": {"$gte": t_order}, "_id": {"$ne": current_note_id}, "calendar_date": None}, {"$inc": {"custom_order": 1}})
+        st.rerun()
 
 @st.dialog("Trash", width="large")
 def open_trash():
@@ -400,42 +447,73 @@ def open_trash():
     col1, col2 = st.columns([3, 1])
     col1.write(f"Notes in trash: {len(trash_notes)}")
     if trash_notes:
-        if col2.button("Empty Trash"):
-            collection.delete_many({"deleted": True})
-            st.rerun()
+        if col2.button("Empty Trash"): collection.delete_many({"deleted": True}); st.rerun()
         st.divider()
         for note in trash_notes:
             with st.expander(f"🗑 {note['titolo']}"):
-                if note.get("tipo") == "disegno" and note.get("file_data"):
-                    # FIX IMAGE 0 BUG
-                    if len(note["file_data"]) > 0:
-                        try:
-                            img_stream = io.BytesIO(note["file_data"])
-                            img = Image.open(img_stream)
-                            st.image(img)
-                        except:
-                            st.error("Image Error")
+                if note.get("tipo") == "disegno" and note.get("file_data") and len(note["file_data"]) > 0:
+                    try: st.image(Image.open(io.BytesIO(note["file_data"])))
+                    except: st.error("Img Error")
                 else:
-                    safe_content = process_content_for_display(note['contenuto'])
-                    st.markdown(f"<div class='quill-read-content'>{safe_content}</div>", unsafe_allow_html=True)
+                    st.markdown(f"<div class='quill-read-content'>{process_content_for_display(note['contenuto'])}</div>", unsafe_allow_html=True)
                 c1, c2 = st.columns(2)
-                if c1.button("↺ Restore", key=f"r_{note['_id']}"):
-                    collection.update_one({"_id": note['_id']}, {"$set": {"deleted": False}})
-                    st.rerun()
-                if c2.button("✕ Delete", key=f"k_{note['_id']}"):
-                    collection.delete_one({"_id": note['_id']})
-                    st.rerun()
-    else:
-        st.info("Trash is empty.")
+                if c1.button("↺ Restore", key=f"r_{note['_id']}"): collection.update_one({"_id": note['_id']}, {"$set": {"deleted": False}}); st.rerun()
+                if c2.button("✕ Delete", key=f"k_{note['_id']}"): collection.delete_one({"_id": note['_id']}); st.rerun()
+    else: st.info("Empty")
 
 @st.dialog("Confirmation")
 def confirm_deletion(note_id):
     st.write("Move to trash?")
     c1, c2 = st.columns(2)
-    if c1.button("Yes", type="primary"):
-        collection.update_one({"_id": note_id}, {"$set": {"deleted": True}})
-        st.rerun()
+    if c1.button("Yes", type="primary"): collection.update_one({"_id": note_id}, {"$set": {"deleted": True}}); st.rerun()
     if c2.button("Cancel"): st.rerun()
+
+# --- CALENDAR DAY VIEW POPUP ---
+@st.dialog("Day View", width="large")
+def open_calendar_day(day_date_str): # Format YYYY-MM-DD
+    # Parse date for display
+    dt_obj = datetime.strptime(day_date_str, "%Y-%m-%d")
+    nice_date = dt_obj.strftime("%A, %d %B %Y")
+    
+    st.markdown(f"## 📅 {nice_date}")
+    
+    # 1. CREATE NOTE FOR THIS DAY
+    with st.expander("➕ Add Note to this day"):
+        render_create_note_form(f"cal_{day_date_str}", day_date_str)
+        
+    st.divider()
+    
+    # 2. LIST NOTES FOR THIS DAY
+    day_notes = list(collection.find({"calendar_date": day_date_str, "deleted": {"$ne": True}}).sort("data", -1))
+    
+    if not day_notes:
+        st.info("No notes for this day.")
+    else:
+        for note in day_notes:
+            icon_clip = "🖇️ " if note.get("file_name") else ""
+            if note.get("tipo") == "disegno": icon_clip = "🎨 "
+            labels = note.get("labels", [])
+            icon_label = "🏷️ " if labels else ""
+            
+            with st.expander(f"{icon_label}{icon_clip}{note['titolo']}"):
+                if labels: st.markdown(render_badges(labels), unsafe_allow_html=True)
+                
+                if note.get("tipo") == "disegno" and note.get("file_data") and len(note["file_data"]) > 0:
+                    try: st.image(Image.open(io.BytesIO(note["file_data"])))
+                    except: pass
+                else:
+                    st.markdown(f"<div class='quill-read-content'>{process_content_for_display(note['contenuto'])}</div>", unsafe_allow_html=True)
+                
+                if note.get("file_name") and note.get("tipo") != "disegno":
+                    st.download_button("Download", data=note["file_data"], file_name=note["file_name"], key=f"dlc_{note['_id']}")
+                
+                c1, c2 = st.columns(2)
+                if c1.button("✎ Edit", key=f"ced_{note['_id']}"):
+                    draw_data = note.get("drawing_json", None)
+                    open_edit_popup(note['_id'], note['titolo'], note['contenuto'], note.get("file_name"), labels, note.get("tipo"), draw_data)
+                
+                if c2.button("🗑 Delete", key=f"cdel_{note['_id']}"):
+                    confirm_deletion(note['_id'])
 
 # --- MAIN LAYOUT ---
 
@@ -450,205 +528,172 @@ with head_col3:
 
 st.markdown("---") 
 
-# --- CREATE NOTE ---
-expander_label = f"Create New Note{'\u200b' * st.session_state.reset_counter}"
-with st.expander(expander_label, expanded=False):
-    
-    note_type = st.radio("Type:", ["Text", "Drawing"], horizontal=True)
-    
-    if note_type == "Text":
-        with st.form("create_note_form", clear_on_submit=True):
-            title_input = st.text_input("Title", key=f"txt_tit_{st.session_state.create_key}")
-            labels_input = st.text_input("Labels (comma separated)", key=f"txt_lbl_{st.session_state.create_key}")
-            content_input = st_quill(placeholder="Write here...", html=True, toolbar=toolbar_config, key=f"quill_create_{st.session_state.create_key}")
-            uploaded_file = st.file_uploader("Attachment", type=['pdf', 'docx', 'txt', 'mp3', 'wav', 'jpg', 'png'], key=f"txt_file_{st.session_state.create_key}")
-            submitted_create = st.form_submit_button("Save Note")
-            
-            if submitted_create:
-                if title_input and content_input:
-                    labels_list = [tag.strip() for tag in labels_input.split(",") if tag.strip()]
-                    last_note = collection.find_one(sort=[("custom_order", -1)])
-                    new_order = (last_note["custom_order"] + 1) if last_note and "custom_order" in last_note else 0
-                    
-                    doc = {
-                        "titolo": title_input,
-                        "contenuto": content_input,
-                        "labels": labels_list,
-                        "data": datetime.now(),
-                        "custom_order": new_order,
-                        "tipo": "testo_ricco",
-                        "deleted": False, "pinned": False,
-                        "file_name": uploaded_file.name if uploaded_file else None,
-                        "file_data": bson.binary.Binary(uploaded_file.getvalue()) if uploaded_file else None
-                    }
-                    collection.insert_one(doc)
-                    st.toast("Saved!", icon="✅")
-                    st.session_state.create_key = str(uuid.uuid4())
-                    st.session_state.reset_counter += 1
-                    st.rerun()
-                else:
-                    st.warning("Title and content required.")
-    
-    else: # DRAWING
-        title_input = st.text_input("Title", key=f"draw_title_{st.session_state.create_key}")
-        labels_input = st.text_input("Labels", key=f"draw_labels_{st.session_state.create_key}")
-        
-        c_w, c_h = st.columns(2)
-        canv_width = c_w.number_input("Width (px)", 300, 2000, 600, key=f"cw_{st.session_state.create_key}")
-        canv_height = c_h.number_input("Height (px)", 300, 2000, 400, key=f"ch_{st.session_state.create_key}")
+# --- TABS: DASHBOARD vs CALENDAR ---
+tab_dash, tab_cal = st.tabs(["📂 DASHBOARD", "📅 CALENDAR"])
 
-        c_col, c_tool, c_width = st.columns([1, 2, 1])
-        with c_col:
-            st.markdown("<b>Set colour</b>", unsafe_allow_html=True)
-            base_color = st.color_picker("Color", "#000000", key=f"dc_{st.session_state.create_key}", label_visibility="collapsed")
-        with c_tool:
-            tool = st.radio("Tool", ["Pen", "Pencil", "Highlighter", "Eraser"], horizontal=True, key=f"dt_{st.session_state.create_key}")
-        with c_width:
-            stroke_width = st.slider("Width", 1, 30, 2, key=f"dw_{st.session_state.create_key}")
-        
-        if tool == "Eraser": base_color = "#ffffff"
-        
-        final_color = base_color
-        if tool == "Pencil":
-            final_color = hex_to_rgba(base_color, 0.7) 
-            if stroke_width > 5: stroke_width = 2 
-        elif tool == "Highlighter":
-            final_color = hex_to_rgba(base_color, 0.4) 
-            if stroke_width < 10: stroke_width = 15 
-        elif tool == "Eraser":
-            if stroke_width < 10: stroke_width = 20
+# ================= DASHBOARD TAB =================
+with tab_dash:
+    # CREATE NOTE (DASHBOARD ONLY)
+    expander_label = f"Create New Note{'\u200b' * st.session_state.reset_counter}"
+    with st.expander(expander_label, expanded=False):
+        render_create_note_form("dash_create") # No date_ref = Dashboard
 
-        canvas_key = f"canvas_{canv_width}_{canv_height}_{st.session_state.create_key}"
-        
-        canvas_result = st_canvas(
-            fill_color="rgba(0,0,0,0)",
-            stroke_width=stroke_width,
-            stroke_color=final_color,
-            background_color="#FFFFFF",
-            update_streamlit=True,
-            height=canv_height, 
-            width=canv_width,   
-            drawing_mode="freedraw",
-            key=canvas_key,
-        )
-        
-        if st.button("Save Drawing"):
-            if title_input and canvas_result.image_data is not None:
-                labels_list = [tag.strip() for tag in labels_input.split(",") if tag.strip()]
-                last_note = collection.find_one(sort=[("custom_order", -1)])
-                new_order = (last_note["custom_order"] + 1) if last_note and "custom_order" in last_note else 0
-                
-                img = Image.fromarray(canvas_result.image_data.astype('uint8'), 'RGBA')
-                buf = io.BytesIO()
-                img.save(buf, format='PNG')
-                val_bytes = buf.getvalue()
-                
-                if len(val_bytes) > 0: # FIX IMAGE 0
-                    doc = {
-                        "titolo": title_input,
-                        "contenuto": "Drawing",
-                        "labels": labels_list,
-                        "data": datetime.now(),
-                        "custom_order": new_order,
-                        "tipo": "disegno",
-                        "deleted": False, "pinned": False,
-                        "file_name": "drawing.png",
-                        "file_data": bson.binary.Binary(val_bytes),
-                        "drawing_json": json.dumps(canvas_result.json_data) 
-                    }
-                    collection.insert_one(doc)
-                    st.toast("Saved!", icon="✅")
-                    st.session_state.create_key = str(uuid.uuid4())
-                    st.session_state.reset_counter += 1
-                    st.rerun()
-                else:
-                    st.error("Error drawing data.")
-            else:
-                st.warning("Draw something and title it.")
+    st.write("")
+    query = st.text_input("🔍", placeholder="Search Dashboard...", label_visibility="collapsed", key="dash_search")
 
-st.write("")
-query = st.text_input("🔍", placeholder="Search...", label_visibility="collapsed")
-
-filter_query = {"deleted": {"$ne": True}}
-if query:
-    filter_query = {
-        "$and": [
+    filter_query = {"deleted": {"$ne": True}, "calendar_date": None} # Only Dashboard notes
+    if query:
+        filter_query["$and"] = [
             {"deleted": {"$ne": True}},
+            {"calendar_date": None},
             {"$or": [
                 {"titolo": {"$regex": query, "$options": "i"}},
                 {"contenuto": {"$regex": query, "$options": "i"}},
                 {"labels": {"$regex": query, "$options": "i"}}
             ]}
         ]
-    }
 
-all_notes = list(collection.find(filter_query).sort("custom_order", 1)) 
+    all_notes = list(collection.find(filter_query).sort("custom_order", 1)) 
+    pinned_notes = [n for n in all_notes if n.get("pinned", False)]
+    other_notes = [n for n in all_notes if not n.get("pinned", False)]
 
-pinned_notes = [n for n in all_notes if n.get("pinned", False)]
-other_notes = [n for n in all_notes if not n.get("pinned", False)]
-
-def render_notes_grid(note_list):
-    if not note_list: return
-    num_cols = st.session_state.grid_cols
-    cols = st.columns(num_cols)
-    for index, note in enumerate(note_list):
-        with cols[index % num_cols]: 
-            icon_clip = "🖇️ " if note.get("file_name") else ""
-            if note.get("tipo") == "disegno": icon_clip = "🎨 "
-            
-            labels = note.get("labels", [])
-            icon_label = "🏷️ " if labels else ""
-            is_pinned = note.get("pinned", False)
-            icon_pin = "" 
-            
-            full_title = f"{icon_pin}{icon_label}{icon_clip}{note['titolo']}"
-            
-            with st.expander(full_title):
-                if labels:
-                    st.markdown(render_badges(labels), unsafe_allow_html=True)
-                    st.write("")
+    def render_dash_grid(note_list):
+        if not note_list: return
+        num_cols = st.session_state.grid_cols
+        cols = st.columns(num_cols)
+        for index, note in enumerate(note_list):
+            with cols[index % num_cols]: 
+                icon_clip = "🖇️ " if note.get("file_name") else ""
+                if note.get("tipo") == "disegno": icon_clip = "🎨 "
+                labels = note.get("labels", [])
+                icon_label = "🏷️ " if labels else ""
+                full_title = f"{icon_label}{icon_clip}{note['titolo']}"
                 
-                if note.get("tipo") == "disegno" and note.get("file_data"):
-                    # FIX PREVIEW (Use PIL)
-                    if len(note["file_data"]) > 0:
-                        img_stream = io.BytesIO(note["file_data"])
-                        img = Image.open(img_stream)
-                        st.image(img)
-                else:
-                    safe_content = process_content_for_display(note['contenuto'])
-                    st.markdown(f"<div class='quill-read-content'>{safe_content}</div>", unsafe_allow_html=True)
-                
-                if note.get("file_name") and note.get("tipo") != "disegno":
+                with st.expander(full_title):
+                    if labels: st.markdown(render_badges(labels), unsafe_allow_html=True)
+                    if note.get("tipo") == "disegno" and note.get("file_data") and len(note["file_data"]) > 0:
+                        try: st.image(Image.open(io.BytesIO(note["file_data"])))
+                        except: pass
+                    else:
+                        st.markdown(f"<div class='quill-read-content'>{process_content_for_display(note['contenuto'])}</div>", unsafe_allow_html=True)
+                    
+                    if note.get("file_name") and note.get("tipo") != "disegno":
+                        st.markdown("---")
+                        st.caption(f"File: {note['file_name']}")
+                        st.download_button("Download", data=note["file_data"], file_name=note["file_name"], key=f"dl_{note['_id']}")
+                    
                     st.markdown("---")
-                    st.caption(f"Attachment: {note['file_name']}")
-                    st.download_button("Download", data=note["file_data"], file_name=note["file_name"])
-                
-                st.markdown("---")
-                
-                c_mod, c_pin, c_move, c_del = st.columns(4)
-                
-                if c_mod.button("✎", key=f"mod_{note['_id']}", help="Edit"):
-                    draw_data = note.get("drawing_json", None)
-                    open_edit_popup(note['_id'], note['titolo'], note['contenuto'], note.get("file_name"), labels, note.get("tipo"), draw_data)
-                
-                label_pin = "⚲"
-                if c_pin.button(label_pin, key=f"pin_{note['_id']}", help="Pin"):
-                     collection.update_one({"_id": note['_id']}, {"$set": {"pinned": not is_pinned}})
-                     st.rerun()
+                    c_mod, c_pin, c_move, c_del = st.columns(4)
+                    if c_mod.button("✎", key=f"m_{note['_id']}"):
+                        draw_data = note.get("drawing_json", None)
+                        open_edit_popup(note['_id'], note['titolo'], note['contenuto'], note.get("file_name"), labels, note.get("tipo"), draw_data)
+                    
+                    label_pin = "⚲"
+                    if c_pin.button(label_pin, key=f"p_{note['_id']}"):
+                         collection.update_one({"_id": note['_id']}, {"$set": {"pinned": not note.get("pinned", False)}})
+                         st.rerun()
+                    if c_move.button("⇄", key=f"mv_{note['_id']}"): open_move_popup(note['_id'])
+                    if c_del.button("🗑", key=f"d_{note['_id']}"): confirm_deletion(note['_id'])
 
-                if c_move.button("⇄", key=f"mv_{note['_id']}", help="Move"):
-                    open_move_popup(note['_id'])
+    if not all_notes:
+        st.info("No dashboard notes.")
+    else:
+        if pinned_notes:
+            st.markdown("<div class='pinned-header'>Pinned Notes</div>", unsafe_allow_html=True)
+            render_dash_grid(pinned_notes)
+            st.write("") 
+            st.markdown("<div class='pinned-header'>All Notes</div>", unsafe_allow_html=True)
+        render_dash_grid(other_notes)
 
-                if c_del.button("🗑", key=f"del_{note['_id']}", help="Delete"):
-                    confirm_deletion(note['_id'])
-
-if not all_notes:
-    st.info("No notes found.")
-else:
-    if pinned_notes:
-        st.markdown("<div class='pinned-header'>Pinned Notes</div>", unsafe_allow_html=True)
-        render_notes_grid(pinned_notes)
-        st.write("") 
-        st.markdown("<div class='pinned-header'>All Notes</div>", unsafe_allow_html=True)
+# ================= CALENDAR TAB =================
+with tab_cal:
+    # Navigation
+    c_prev, c_sel_m, c_sel_y, c_next = st.columns([1, 2, 2, 1])
     
-    render_notes_grid(other_notes)
+    with c_prev:
+        if st.button("◀ Prev"):
+            st.session_state.cal_month -= 1
+            if st.session_state.cal_month == 0:
+                st.session_state.cal_month = 12
+                st.session_state.cal_year -= 1
+            st.rerun()
+            
+    with c_next:
+        if st.button("Next ▶"):
+            st.session_state.cal_month += 1
+            if st.session_state.cal_month == 13:
+                st.session_state.cal_month = 1
+                st.session_state.cal_year += 1
+            st.rerun()
+            
+    with c_sel_m:
+        month_names = list(calendar.month_name)[1:]
+        sel_month_name = st.selectbox("Month", month_names, index=st.session_state.cal_month-1, label_visibility="collapsed")
+        new_month_idx = month_names.index(sel_month_name) + 1
+        if new_month_idx != st.session_state.cal_month:
+            st.session_state.cal_month = new_month_idx
+            st.rerun()
+            
+    with c_sel_y:
+        years = list(range(2025, 2125))
+        try: y_idx = years.index(st.session_state.cal_year)
+        except: y_idx = 0
+        sel_year = st.selectbox("Year", years, index=y_idx, label_visibility="collapsed")
+        if sel_year != st.session_state.cal_year:
+            st.session_state.cal_year = sel_year
+            st.rerun()
+
+    # Calculate Days
+    num_days = calendar.monthrange(st.session_state.cal_year, st.session_state.cal_month)[1]
+    
+    # Query ALL notes for this month to optimize performance (1 query vs 30)
+    start_date_str = f"{st.session_state.cal_year}-{st.session_state.cal_month:02d}-01"
+    end_date_str = f"{st.session_state.cal_year}-{st.session_state.cal_month:02d}-{num_days}"
+    
+    month_notes = list(collection.find({
+        "calendar_date": {"$gte": start_date_str, "$lte": end_date_str},
+        "deleted": {"$ne": True}
+    }))
+    
+    # Organize notes by day
+    notes_by_day = {}
+    for n in month_notes:
+        d = n["calendar_date"]
+        if d not in notes_by_day: notes_by_day[d] = []
+        notes_by_day[d].append(n)
+
+    st.write("---")
+    
+    # VERTICAL LIST CALENDAR
+    for day in range(1, num_days + 1):
+        date_str = f"{st.session_state.cal_year}-{st.session_state.cal_month:02d}-{day:02d}"
+        dt = date(st.session_state.cal_year, st.session_state.cal_month, day)
+        day_name = dt.strftime("%A")[:3] # Mon, Tue...
+        
+        # Check notes
+        notes_today = notes_by_day.get(date_str, [])
+        count = len(notes_today)
+        
+        # Visual style for the row
+        bg_col = "#ffffff"
+        border_col = "#eee"
+        info_text = "No notes"
+        if count > 0:
+            bg_col = "#f0f8ff" # Light blue highlight
+            border_col = "#b0c4de"
+            info_text = f"<b>{count} Notes</b>"
+            # Preview titles
+            titles = [n['titolo'] for n in notes_today[:3]]
+            if titles: info_text += f" <span style='color:#666; font-size:0.8em'>({', '.join(titles)}...)</span>"
+
+        # Clickable Row (simulated with button full width)
+        # Using a container with button inside to simulate the "Row"
+        # We construct HTML button label to look like a row
+        
+        btn_label = f"{day:02d} {day_name} | {info_text}"
+        
+        # Streamlit button doesn't support rich HTML well, so we use a clean format
+        # and rely on the popup to show details.
+        
+        if st.button(f"{day:02d} {day_name}  -  {'📄 '*count if count > 0 else 'Empty'}", key=f"cal_day_{day}", use_container_width=True):
+            open_calendar_day(date_str)

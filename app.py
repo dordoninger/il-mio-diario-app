@@ -113,7 +113,7 @@ if 'first_load' not in st.session_state:
     placeholder = st.empty()
     with placeholder.container():
         st.markdown("<div class='splash-text'>DOR NOTES</div>", unsafe_allow_html=True)
-        time.sleep(2.0)
+        time.sleep(2.0) # Solo all'avvio va bene
     placeholder.empty()
     st.session_state['first_load'] = True
 
@@ -149,55 +149,34 @@ def sanitize_links(html_content):
     replacement = r'<a href="\1" target="_blank" style="color: #1E90FF !important; text-decoration: underline !important; cursor: pointer;" rel="noopener noreferrer"'
     return re.sub(pattern, replacement, html_content)
 
-# FUNZIONE CHIRURGICA PER PULIRE FORMULE ANNIDATE
-# Risolve il problema del testo residuo "x2+2" eliminando l'intero blocco HTML
 def clean_formulas_robust(text):
     if not text: return ""
-    
     while True:
-        # Cerca l'inizio di una formula
         start_marker = '<span class="ql-formula"'
         start_idx = text.find(start_marker)
-        if start_idx == -1:
-            break # Nessuna altra formula trovata
-        
-        # Trova la fine del tag di apertura per estrarre il data-value
+        if start_idx == -1: break 
         end_open_tag = text.find('>', start_idx)
         if end_open_tag == -1: break 
-        
-        # Estrai il valore LaTeX
         open_tag_content = text[start_idx:end_open_tag]
         match = re.search(r'data-value="([^"]+)"', open_tag_content)
         formula_latex = match.group(1) if match else "Formula"
-        
-        # ORA IL PASSO CRUCIALE: Trovare il tag di chiusura corrispondente (</span>)
-        # gestendo gli annidamenti interni che confondevano la Regex.
         balance = 1
         current_idx = end_open_tag + 1
-        
         while balance > 0 and current_idx < len(text):
             next_open = text.find('<span', current_idx)
             next_close = text.find('</span>', current_idx)
-            
             if next_close == -1: 
-                # HTML rotto, usciamo per sicurezza
                 balance = 0
                 current_idx = len(text)
                 break
-            
-            # Se troviamo un'apertura prima della chiusura, aumentiamo il livello di annidamento
             if next_open != -1 and next_open < next_close:
                 balance += 1
                 current_idx = next_open + 5 
             else:
-                # Se troviamo una chiusura, diminuiamo il livello
                 balance -= 1
-                current_idx = next_close + 7 # Lunghezza di </span>
-        
-        # Sostituiamo TUTTO il blocco identificato con il testo pulito
+                current_idx = next_close + 7 
         replacement = f" **(Formula: {formula_latex})** "
         text = text[:start_idx] + replacement + text[current_idx:]
-        
     return text
 
 # --- 6. TOOLBAR CONFIG ---
@@ -236,6 +215,7 @@ def open_settings():
 
 @st.dialog("Edit Note", width="large")
 def open_edit_popup(note_id):
+    # OTTIMIZZAZIONE: Recuperiamo solo i campi necessari se possibile, ma per l'edit serve tutto
     note = collection.find_one({"_id": note_id})
     if not note:
         st.error("Note not found.")
@@ -246,7 +226,6 @@ def open_edit_popup(note_id):
     raw_content = note.get('contenuto', '')
     old_filename = note.get('file_name', None)
 
-    # USA LA NUOVA FUNZIONE DI PULIZIA ROBUSTA
     clean_content = clean_formulas_robust(raw_content)
 
     st.markdown("### Edit Content")
@@ -275,7 +254,7 @@ def open_edit_popup(note_id):
             
             collection.update_one({"_id": note_id}, {"$set": update_data})
             st.session_state.edit_trigger += 1
-            st.rerun()
+            st.rerun() # RERUN IMMEDIATO SENZA SLEEP
 
     if old_filename:
         st.caption(f"Attachment: {old_filename}")
@@ -331,7 +310,7 @@ with head_col3:
 
 st.markdown("---") 
 
-# --- CREATE NOTE EXPANDER (FORCE CLOSE TRICK) ---
+# --- CREATE NOTE EXPANDER ---
 
 expander_label = f"Create New Note{'\u200b' * st.session_state.reset_counter}"
 
@@ -339,7 +318,6 @@ with st.expander(expander_label, expanded=False):
     with st.form("create_note_form", clear_on_submit=True):
         title_input = st.text_input("Title")
         
-        # Editor con chiave dinamica per reset totale
         content_input = st_quill(
             placeholder="Write your thoughts here...",
             html=True,
@@ -363,7 +341,7 @@ with st.expander(expander_label, expanded=False):
                 }
                 collection.insert_one(doc)
                 st.toast("Saved!", icon="✓")
-                time.sleep(0.5)
+                # RIMOSSO TIME.SLEEP - Velocizza di 0.5s
                 
                 # AZIONI POST-SALVATAGGIO:
                 st.session_state.create_key = str(uuid.uuid4())
@@ -418,7 +396,7 @@ def render_notes_grid(note_list):
                 label_pin = "Unpin" if is_pinned else "⚲ Pin"
                 if c_pin.button(label_pin, key=f"pin_{note['_id']}"):
                      collection.update_one({"_id": note['_id']}, {"$set": {"pinned": not is_pinned}})
-                     st.rerun()
+                     st.rerun() # RERUN IMMEDIATO
 
                 if c_del.button("🗑 Delete", key=f"del_{note['_id']}"):
                     confirm_deletion(note['_id'])

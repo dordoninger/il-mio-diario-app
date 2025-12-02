@@ -13,6 +13,7 @@ st.set_page_config(page_title="DOR NOTES", page_icon="📄", layout="wide")
 
 # --- 2. STATE MANAGEMENT ---
 if 'text_size' not in st.session_state: st.session_state.text_size = "16px"
+# Trigger to force updates
 if 'edit_trigger' not in st.session_state: st.session_state.edit_trigger = 0
 
 # --- 3. CSS AESTHETIC (VERSION 18 RESTORED - BLACK BORDERS) ---
@@ -156,7 +157,8 @@ toolbar_config = [
     [{ 'color': [] }, { 'background': [] }],
     [{ 'font': [] }],
     [{ 'align': [] }],
-    ['link', 'image', 'formula'],
+    ['image', 'formula'],
+    ['link'],
 ]
 
 # --- 7. POPUPS (DIALOGS) ---
@@ -184,28 +186,31 @@ def open_settings():
 def open_edit_popup(note_id, old_title, old_content, old_filename):
     st.markdown("### Edit Content")
     
+    # --- SOLUTION FOR FORMULA CRASH: SAFE MODE ---
+    # Since formulas can crash the visual editor upon reloading,
+    # we provide a fallback mode to edit raw text.
+    use_safe_mode = st.toggle("⚠️ Safe Mode (Enable if editor crashes due to formula)")
+    
     # FORM to prevent reload issues
     with st.form(key=f"edit_form_{note_id}"):
         new_title = st.text_input("Title", value=old_title)
         
-        # --- SAFE MODE TOGGLE (Fix for Formula Crash) ---
-        st.markdown("---")
-        use_safe_mode = st.checkbox("⚠️ Safe Mode (Check this if editing a Formula crashes)", value=False)
-        
         if use_safe_mode:
-            # TEXT AREA: Cannot crash. Shows raw HTML/Text.
-            # You can delete the formula text here safely.
-            new_content = st.text_area("Raw Content (Safe Edit)", value=old_content, height=300)
+            st.warning("You are editing raw HTML. Use this to delete broken formulas.")
+            new_content = st.text_area("Raw Content", value=old_content, height=300)
         else:
-            # QUILL: Visual editor (May crash with complex formulas)
+            # QUILL: Visual editor
+            # We use a unique key to ensure fresh load
             unique_key = f"quill_edit_{note_id}_{st.session_state.edit_trigger}"
             new_content = st_quill(value=old_content, toolbar=toolbar_config, html=True, key=unique_key)
         
         st.divider()
         st.markdown("### Attachments")
         
+        # File management inside form
         new_file = st.file_uploader("Replace File (Optional)", type=['pdf', 'docx', 'txt', 'mp3', 'wav', 'jpg', 'png'])
         
+        # Form Submit Button
         submitted = st.form_submit_button("Save Changes", type="primary")
         
         if submitted:
@@ -219,10 +224,10 @@ def open_edit_popup(note_id, old_title, old_content, old_filename):
                 update_data["file_data"] = bson.binary.Binary(new_file.getvalue())
             
             collection.update_one({"_id": note_id}, {"$set": update_data})
-            st.session_state.edit_trigger += 1 
+            st.session_state.edit_trigger += 1 # Force refresh key for next time
             st.rerun()
 
-    # Remove file button (outside form)
+    # Option to remove file outside form (since it's a separate action)
     if old_filename:
         st.info(f"Current file: **{old_filename}**")
         if st.button("Remove current file", key=f"rm_file_{note_id}"):
@@ -274,6 +279,7 @@ with head_col3:
 st.markdown("---") 
 
 with st.expander("Create New Note"):
+    # Using FORM here too to prevent glitches during creation
     with st.form("create_note_form", clear_on_submit=True):
         title_input = st.text_input("Title")
         

@@ -14,7 +14,6 @@ st.set_page_config(page_title="DOR NOTES", page_icon="📄", layout="wide")
 # --- 2. STATE MANAGEMENT ---
 if 'text_size' not in st.session_state: st.session_state.text_size = "16px"
 if 'edit_trigger' not in st.session_state: st.session_state.edit_trigger = 0
-# Gestione stato apertura tendina creazione
 if 'create_expanded' not in st.session_state: st.session_state.create_expanded = False
 
 # --- 3. CSS AESTHETIC ---
@@ -55,7 +54,6 @@ st.markdown(f"""
         line-height: 1.6;
     }}
     
-    /* Force Link Color in Read Mode */
     .quill-read-content a {{
         color: #1E90FF !important;
         text-decoration: underline !important;
@@ -90,14 +88,17 @@ st.markdown(f"""
         align-items: center;
     }}
     
-    /* Styling per sezione Pinned (CORRETTO con doppie parentesi) */
+    /* Styling per sezione Pinned/All Notes (Modificato: Sottile e senza grassetto) */
     .pinned-header {{
-        font-size: 1.2rem;
-        font-weight: bold;
-        color: #333;
+        font-family: 'Helvetica Neue', 'Helvetica', 'Arial', sans-serif;
+        font-weight: 300;  /* Leggero (non grassetto) */
+        font-size: 1.4rem;
+        color: #000;
+        margin-top: 20px;
         margin-bottom: 10px;
-        border-bottom: 2px solid #eee;
+        border-bottom: 1px solid #eee;
         padding-bottom: 5px;
+        letter-spacing: 1px;
     }}
 </style>
 """, unsafe_allow_html=True)
@@ -189,7 +190,7 @@ def open_edit_popup(note_id):
     raw_content = note.get('contenuto', '')
     old_filename = note.get('file_name', None)
 
-    # PULIZIA FORMULE (Richiesta 1: Fix regex aggressivo)
+    # PULIZIA FORMULE (Fix regex aggressivo)
     clean_content = re.sub(
         r'<span class="ql-formula"[\s\S]*?data-value="([^"]+)"[\s\S]*?>[\s\S]*?</span>', 
         r' **(Formula: \1)** ', 
@@ -265,21 +266,24 @@ def confirm_deletion(note_id):
 
 # --- MAIN LAYOUT ---
 
-# Richiesta 4: Allineamento tasti più vicino e a destra
-head_col1, head_col2, head_col3 = st.columns([8.5, 0.75, 0.75])
+# Modificato layout colonne per spingere i bottoni a destra [9.0, 0.5, 0.5]
+head_col1, head_col2, head_col3 = st.columns([9.0, 0.5, 0.5])
 
 with head_col1: 
     st.markdown("<div class='dor-title'>DOR NOTES</div>", unsafe_allow_html=True)
 with head_col2: 
+    # Distanziatore verticale per abbassare il pulsante
+    st.markdown("<div style='height: 15px;'></div>", unsafe_allow_html=True)
     if st.button("⚙️", help="Settings"): open_settings()
 with head_col3: 
+    # Distanziatore verticale per abbassare il pulsante
+    st.markdown("<div style='height: 15px;'></div>", unsafe_allow_html=True)
     if st.button("🗑️", help="Trash"): open_trash()
 
 st.markdown("---") 
 
 # --- CREATE NOTE EXPANDER ---
 
-# Richiesta 2: Gestione automatica chiusura
 with st.expander("Create New Note", expanded=st.session_state.create_expanded):
     with st.form("create_note_form", clear_on_submit=True):
         title_input = st.text_input("Title")
@@ -321,7 +325,6 @@ if query:
 
 all_notes = list(collection.find(filter_query).sort("data", -1))
 
-# Richiesta 3: Separazione Note Pinned
 pinned_notes = [n for n in all_notes if n.get("pinned", False)]
 other_notes = [n for n in all_notes if not n.get("pinned", False)]
 
@@ -369,9 +372,10 @@ if not all_notes:
     st.info("No notes found.")
 else:
     if pinned_notes:
-        st.markdown("<div class='pinned-header'>📌 Pinned Notes</div>", unsafe_allow_html=True)
+        # Rimossa emoji e impostato stile leggero tramite CSS
+        st.markdown("<div class='pinned-header'>Pinned Notes</div>", unsafe_allow_html=True)
         render_notes_grid(pinned_notes)
-        st.markdown("---")
-        st.markdown("<div class='pinned-header'>📝 All Notes</div>", unsafe_allow_html=True)
+        st.write("") # Spazio vuoto
+        st.markdown("<div class='pinned-header'>All Notes</div>", unsafe_allow_html=True)
     
     render_notes_grid(other_notes)

@@ -61,34 +61,12 @@ st.markdown(f"""
         cursor: pointer !important;
     }}
 
-    /* --- BLACK BORDER FORCE FIX (BUG 1 SOLVED) --- */
-    
-    /* 1. Input Fields (Title & Search) */
-    div[data-baseweb="input"] {{
-        border-color: #e0e0e0 !important;
-        border-radius: 5px !important;
-    }}
-    
-    /* Focus State - Dark Grey instead of Red */
-    div[data-baseweb="input"]:focus-within {{
-        border: 1px solid #333333 !important; 
-        box-shadow: none !important;          
-    }}
-
-    /* 2. Text Area */
-    div[data-baseweb="textarea"] {{
-        border-color: #e0e0e0 !important;
-        border-radius: 5px !important;
-    }}
-    div[data-baseweb="textarea"]:focus-within {{
-        border: 1px solid #333333 !important;
-        box-shadow: none !important;
-    }}
-
-    /* 3. Generic Focus Ring Removal */
-    input:focus {{
-        outline: none !important;
-    }}
+    /* --- BLACK BORDER FORCE FIX --- */
+    div[data-baseweb="input"] {{ border-color: #e0e0e0 !important; border-radius: 5px !important; }}
+    div[data-baseweb="input"]:focus-within {{ border: 1px solid #333333 !important; box-shadow: none !important; }}
+    div[data-baseweb="textarea"] {{ border-color: #e0e0e0 !important; border-radius: 5px !important; }}
+    div[data-baseweb="textarea"]:focus-within {{ border: 1px solid #333333 !important; box-shadow: none !important; }}
+    input:focus {{ outline: none !important; }}
 
     /* ANIMATION */
     @keyframes fade-in {{
@@ -149,7 +127,6 @@ def convert_notes_to_json(note_list):
     return json.dumps(export_list, indent=4)
 
 def sanitize_links(html_content):
-    # BUG 2 SOLVED: Injects style and target directly into HTML
     if not html_content: return ""
     pattern = r'<a href="([^"]*)"'
     replacement = r'<a href="\1" target="_blank" style="color: #1E90FF !important; text-decoration: underline !important; cursor: pointer;" rel="noopener noreferrer"'
@@ -164,7 +141,7 @@ toolbar_config = [
     [{ 'color': [] }, { 'background': [] }],
     [{ 'font': [] }],
     [{ 'align': [] }],
-    ['image', 'formula'],
+    ['image', 'formula'], # Formula button is here
     ['link'],
 ]
 
@@ -189,56 +166,47 @@ def open_settings():
         res = collection.delete_many({"deleted": True, "data": {"$lt": limit}})
         if res.deleted_count > 0: st.success(f"Cleaned {res.deleted_count} items.")
 
-# BUG 3 SOLVED: Function accepts ONLY ID to prevent "Nested Dialogs" error
+# --- EDIT POPUP (AUTOMATIC CLEAN MODE) ---
 @st.dialog("Edit Note", width="large")
 def open_edit_popup(note_id):
-    # Fetch data internally to ensure stability
+    # 1. Recupera la nota dal DB
     note = collection.find_one({"_id": note_id})
-    
     if not note:
         st.error("Note not found.")
         if st.button("Close"): st.rerun()
         return
 
     old_title = note.get('titolo', '')
-    old_content = note.get('contenuto', '')
+    raw_content = note.get('contenuto', '')
     old_filename = note.get('file_name', None)
+
+    # 2. PULIZIA AUTOMATICA FORMULE (BUG 3 SOLVED)
+    # Questa regex cerca il tag formula completo e lo sostituisce con un segnaposto testuale.
+    # [^>]* serve a ignorare eventuali attributi extra che creavano il problema della duplicazione.
+    # .*? consuma tutto fino alla chiusura dello span.
+    
+    clean_content = re.sub(
+        r'<span class="ql-formula"[^>]*data-value="([^"]+)"[^>]*>.*?</span>', 
+        r' **(Formula: \1)** ', 
+        raw_content,
+        flags=re.DOTALL # Assicura che funzioni anche se ci sono "a capo" strani
+    )
 
     st.markdown("### Edit Content")
     
-    col_safe, col_clean = st.columns([1, 1])
-    with col_safe:
-        # BUG 3 Fix: Safe Mode to edit raw HTML formula code
-        mode = st.radio("Mode", ["Visual Editor", "Safe Mode (Raw HTML)"], horizontal=True, label_visibility="collapsed")
-    
-    current_content = old_content
-
-    # BUG 3 Fix: Emergency Button to strip formulas if crashed
-    with col_clean:
-        if st.button("🚑 Repair Note (Text Only)", help="Click if editor crashes. Converts formulas to text."):
-            clean_text = re.sub(
-                r'<span class="ql-formula" data-value="(.*?)">.*?</span>', 
-                r' **(Formula: \1)** ', 
-                old_content
-            )
-            collection.update_one({"_id": note_id}, {"$set": {"contenuto": clean_text}})
-            st.rerun()
-
-    # FORM
+    # 3. FORM DI MODIFICA
     with st.form(key=f"edit_form_{note_id}"):
         new_title = st.text_input("Title", value=old_title)
         
-        if mode == "Safe Mode (Raw HTML)":
-            st.info("Edit `data-value=\"...\"` to change formulas manually.")
-            new_content = st.text_area("Raw HTML", value=current_content, height=300)
-        else:
-            # Quill Editor
-            unique_key = f"quill_edit_{note_id}_{int(time.time())}"
-            new_content = st_quill(value=current_content, toolbar=toolbar_config, html=True, key=unique_key)
+        # Editor Visuale: Qui vedrai "**(Formula: x^2)**" come testo.
+        # PUOI CANCELLARLO E INSERIRE UNA NUOVA FORMULA DALLA TOOLBAR.
+        unique_key = f"quill_edit_{note_id}_{int(time.time())}"
+        new_content = st_quill(value=clean_content, toolbar=toolbar_config, html=True, key=unique_key)
+        
+        st.caption("ℹ️ Le formule esistenti sono mostrate come testo **(Formula: ...)** per evitare errori. Cancellale e usa il tasto 'f(x)' nella toolbar per inserirne di nuove.")
         
         st.divider()
         st.markdown("### Attachments")
-        
         new_file = st.file_uploader("Replace File", type=['pdf', 'docx', 'txt', 'mp3', 'wav', 'jpg', 'png'])
         
         submitted = st.form_submit_button("Save Changes", type="primary")
@@ -376,7 +344,6 @@ else:
                 st.markdown("---")
                 c_mod, c_pin, c_del = st.columns(3)
                 
-                # UPDATED CALL FOR BUG 3 FIX:
                 if c_mod.button("Edit", key=f"mod_{note['_id']}"):
                     open_edit_popup(note['_id'])
                 

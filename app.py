@@ -15,8 +15,9 @@ st.set_page_config(page_title="DOR NOTES", page_icon="📄", layout="wide")
 if 'text_size' not in st.session_state: st.session_state.text_size = "16px"
 if 'edit_trigger' not in st.session_state: st.session_state.edit_trigger = 0
 
-# Gestione ID univoco per l'expander (IL TRUCCO PER CHIUDERLO)
-if 'expander_id' not in st.session_state: st.session_state.expander_id = 0
+# Gestione apertura/chiusura tendina creazione
+# Iniziamo con False (chiuso)
+if 'create_expanded' not in st.session_state: st.session_state.create_expanded = False
 
 # Gestione chiave univoca per svuotare l'editor dopo il salvataggio
 if 'create_key' not in st.session_state: st.session_state.create_key = str(uuid.uuid4())
@@ -284,23 +285,11 @@ with head_col3:
 
 st.markdown("---") 
 
-# --- CREATE NOTE EXPANDER (FIXED CLOSING LOGIC) ---
+# --- CREATE NOTE EXPANDER (FIXED NO-CRASH) ---
 
-# Usiamo una chiave dinamica sull'EXPANDER stesso.
-# Se la chiave cambia, Streamlit distrugge il vecchio expander (aperto) 
-# e ne crea uno nuovo (chiuso di default).
-current_expander_key = f"create_expander_{st.session_state.expander_id}"
-
-# Sostituisci la riga 'with st.expander(...):' con questa versione che usa la KEY:
-with st.expander("Create New Note", expanded=False, key=f"create_expander_{st.session_state.expander_id}"):
-    # (Streamlit chiuderà l'expander al rerun perché expanded=False è il default)
-    # Se noti che non si chiude ancora, cambia la riga sopra in:
-    # with st.expander("Create New Note", expanded=False, key=f"create_expander_{st.session_state.expander_id}"):
-    pass
-    # Hack per forzare la chiave sull'expander: Streamlit non permette di cambiare la chiave di un expander esistente facilmente,
-    # ma avvolgendolo in un container o rigenerandolo funziona.
-    # Nota: In questo codice, il reset avviene ricaricando la pagina con un nuovo ID di stato.
-    
+# Rimuoviamo l'argomento 'key' che dava errore.
+# Usiamo st.session_state.create_expanded per controllare lo stato (True/False)
+with st.expander("Create New Note", expanded=st.session_state.create_expanded):
     with st.form("create_note_form", clear_on_submit=True):
         title_input = st.text_input("Title")
         
@@ -331,20 +320,13 @@ with st.expander("Create New Note", expanded=False, key=f"create_expander_{st.se
                 time.sleep(0.5)
                 
                 # AZIONI POST-SALVATAGGIO:
-                # 1. Aggiorna la chiave dell'editor per svuotarlo
+                # 1. Resettiamo la variabile di stato per chiudere la tendina al prossimo riavvio
+                st.session_state.create_expanded = False
+                
+                # 2. Aggiorna la chiave dell'editor per svuotarlo
                 st.session_state.create_key = str(uuid.uuid4())
                 
-                # 2. Aggiorna la chiave dell'EXPANDER (Simulato tramite rerun che resetta lo stato UI di default)
-                # In realtà, st.rerun() riporta l'expander allo stato iniziale (chiuso) se non è persistente.
-                # Per sicurezza, incrementiamo un counter che potremmo usare come key se necessario, 
-                # ma qui il rerun + clear_on_submit dovrebbe bastare.
-                # Se non basta, cambiamo la key dell'expander nel prossimo passaggio.
-                
-                # TRUCCO FINALE: Assegniamo una key dinamica all'expander nel layout.
-                # Modifico la riga 260 nel prossimo blocco (vedi sotto, ho applicato la fix direttamente al codice sopra?)
-                # Aspetta, ho bisogno di applicare la key all'expander nel codice qui sotto.
-                
-                st.session_state.expander_id += 1 # Cambia l'identità dell'expander
+                # 3. Ricarica la pagina: Streamlit leggerà create_expanded=False e chiuderà la tendina
                 st.rerun()
             else:
                 st.warning("Title and content required.")

@@ -97,49 +97,45 @@ st.markdown(f"""
         text-transform: uppercase;
     }}
 
-    /* --- BLACK BORDER FIXES --- */
+    /* --- GLOBAL INPUT FIX (ELIMINA ROSSO OVUNQUE) --- */
 
-    /* 1. Generic Inputs (Text, etc.) */
-    div[data-baseweb="input"] {{ 
-        border-color: #e0e0e0 !important; 
-        border-radius: 8px !important; 
-    }}
-    div[data-baseweb="input"]:focus-within {{ 
-        border: 1px solid #000000 !important; 
-        box-shadow: none !important; 
-    }}
-    
-    /* 2. Text Areas */
-    div[data-baseweb="textarea"] {{ 
-        border-color: #e0e0e0 !important; 
-        border-radius: 8px !important; 
-    }}
-    div[data-baseweb="textarea"]:focus-within {{ 
-        border: 1px solid #000000 !important; 
-        box-shadow: none !important; 
-    }}
-    
-    /* 3. NUMBER INPUTS (Larghezza/Altezza foglio) - FIX SPECIFICO */
-    /* Targettiamo specificamente il contenitore interno dell'input numerico */
-    div[data-testid="stNumberInput"] div[data-baseweb="input"] {{
-        border-color: #e0e0e0 !important;
+    /* 1. Reset generale per Input Testo, Numeri e Textarea */
+    div[data-baseweb="input"], 
+    div[data-baseweb="base-input"], 
+    div[data-baseweb="textarea"] {{
+        border: 1px solid #e0e0e0 !important;
         border-radius: 8px !important;
-    }}
-    /* Quando è attivo/focus, forza bordo nero e rimuove ombra rossa */
-    div[data-testid="stNumberInput"] div[data-baseweb="input"]:focus-within {{
-        border: 1px solid #000000 !important;
-        box-shadow: none !important;
-        outline: none !important;
-    }}
-    /* Rimuove l'outline dal campo di input HTML vero e proprio */
-    div[data-testid="stNumberInput"] input:focus {{
-        outline: none !important;
-        box-shadow: none !important;
-        border-color: transparent !important;
+        background-color: #ffffff !important;
     }}
 
-    /* Generic Focus override */
-    input:focus {{ outline: none !important; border-color: #000000 !important; }}
+    /* 2. Stato FOCUS (Quando clicchi): Bordo Nero e NO OMBRA ROSSA */
+    div[data-baseweb="input"]:focus-within,
+    div[data-baseweb="base-input"]:focus-within, 
+    div[data-baseweb="textarea"]:focus-within {{
+        border: 1px solid #000000 !important;
+        box-shadow: none !important; /* Questo rimuove l'alone rosso */
+        outline: none !important;
+    }}
+
+    /* 3. Fix specifico per i Number Input (Grandezza Foglio) */
+    /* Rimuove bordi e ombre dagli elementi interni per evitare doppi bordi */
+    div[data-testid="stNumberInput"] input {{
+        box-shadow: none !important;
+        outline: none !important;
+    }}
+    
+    /* Forza il contenitore principale del numero ad essere nero sul focus */
+    div[data-testid="stNumberInput"] > div:first-child:focus-within {{
+        border-color: #000000 !important;
+        box-shadow: none !important;
+    }}
+
+    /* Generic Focus override di sicurezza */
+    input:focus {{ 
+        outline: none !important; 
+        border-color: #000000 !important; 
+        box-shadow: none !important;
+    }}
 
     /* ANIMATION */
     @keyframes fade-in {{
@@ -500,7 +496,7 @@ with st.expander("Create New Note", expanded=expander_state):
         labels_input = st.text_input("Labels", key=f"draw_labels_{st.session_state.create_key}")
         
         c_w, c_h = st.columns(2)
-        # Note: These are 'stNumberInput' which we fixed in CSS to be black on focus
+        # Note: These are 'stNumberInput' now fixed by CSS to be black on focus without red shadow
         canv_width = c_w.number_input("Width (px)", 300, 2000, 600, key=f"cw_{st.session_state.create_key}")
         canv_height = c_h.number_input("Height (px)", 300, 2000, 400, key=f"ch_{st.session_state.create_key}")
 
@@ -548,7 +544,7 @@ with st.expander("Create New Note", expanded=expander_state):
                 img = Image.fromarray(canvas_result.image_data.astype('uint8'), 'RGBA')
                 buf = io.BytesIO()
                 img.save(buf, format='PNG')
-                val_bytes = buf.getvalue() # Get bytes
+                val_bytes = buf.getvalue() 
                 
                 if len(val_bytes) > 100: 
                     doc = {

@@ -38,7 +38,6 @@ st.markdown(f"""
 
     /* --- ROUNDED NOTES & COMPACT HEADERS --- */
     
-    /* Target the Expander Container (The Note Card) */
     .streamlit-expander {{
         border-radius: 12px !important;
         border: 1px solid #e0e0e0 !important;
@@ -47,7 +46,6 @@ st.markdown(f"""
         margin-bottom: 10px;
     }}
     
-    /* Make headers shorter */
     .streamlit-expanderHeader {{
         font-weight: 600;
         font-size: 1.0rem;
@@ -76,6 +74,25 @@ st.markdown(f"""
         color: #1E90FF !important;
         text-decoration: underline !important;
         cursor: pointer !important;
+    }}
+    
+    /* Checkbox list style fix for Read Mode */
+    .quill-read-content ul[data-checked] {{
+        padding-left: 0;
+    }}
+    .quill-read-content li[data-checked] {{
+        list-style-type: none;
+        display: flex;
+        align-items: center;
+    }}
+    .quill-read-content li[data-checked]::before {{
+        content: "☐";
+        margin-right: 8px;
+        font-size: 1.2em;
+    }}
+    .quill-read-content li[data-checked="true"]::before {{
+        content: "☑";
+        color: green;
     }}
 
     /* BADGE STYLE */
@@ -194,11 +211,11 @@ def render_badges(labels_list):
         html += f"<span class='dor-badge'>{label}</span>"
     return html
 
-# --- TOOLBAR CONFIG ---
+# --- TOOLBAR CONFIG (ADDED CHECKLIST) ---
 toolbar_config = [
     ['bold', 'italic', 'underline', 'strike'],
     [{ 'header': [1, 2, 3, False] }],
-    [{ 'list': 'ordered'}, { 'list': 'bullet' }],
+    [{ 'list': 'ordered'}, { 'list': 'bullet'}, { 'list': 'check' }], # Added Checklist
     [{ 'script': 'sub'}, { 'script': 'super' }], 
     [{ 'color': [] }, { 'background': [] }],
     [{ 'font': [] }],
@@ -360,7 +377,8 @@ with head_col3:
 
 st.markdown("---") 
 
-# --- CREATE NOTE (STACKED) ---
+# --- CREATE NOTE & SEARCH ---
+# 1. CREATE NOTE
 expander_label = f"Create New Note{'\u200b' * st.session_state.reset_counter}"
 with st.expander(expander_label, expanded=False):
     with st.form("create_note_form", clear_on_submit=True):
@@ -396,8 +414,9 @@ with st.expander(expander_label, expanded=False):
             else:
                 st.warning("Title and content required.")
 
-# --- SEARCH BAR (BELOW CREATE) ---
-st.write("") # Small gap
+st.write("") # Spacer
+
+# 2. SEARCH BAR
 query = st.text_input("🔍", placeholder="Search...", label_visibility="collapsed")
 
 filter_query = {"deleted": {"$ne": True}}
@@ -421,19 +440,21 @@ other_notes = [n for n in all_notes if not n.get("pinned", False)]
 def render_notes_grid(note_list):
     if not note_list: return
     
-    # DYNAMIC GRID COLUMNS
     num_cols = st.session_state.grid_cols
     cols = st.columns(num_cols)
     
     for index, note in enumerate(note_list):
         with cols[index % num_cols]: 
-            icon_clip = "🖇️" if note.get("file_name") else ""
-            is_pinned = note.get("pinned", False)
-            icon_pin = "" if is_pinned else ""
+            icon_clip = "🖇️ " if note.get("file_name") else ""
             labels = note.get("labels", [])
-            labels_suffix = " **[LABELS]**" if labels else ""
+            icon_label = "🏷️ " if labels else ""
             
-            with st.expander(f"{icon_pin}{icon_clip} {note['titolo']}{labels_suffix}"):
+            is_pinned = note.get("pinned", False)
+            icon_pin = "" 
+            
+            full_title = f"{icon_pin}{icon_label}{icon_clip}{note['titolo']}"
+            
+            with st.expander(full_title):
                 if labels:
                     st.markdown(render_badges(labels), unsafe_allow_html=True)
                     st.write("")
@@ -453,7 +474,7 @@ def render_notes_grid(note_list):
                 if c_mod.button("✎", key=f"mod_{note['_id']}", help="Edit"):
                     open_edit_popup(note['_id'], note['titolo'], note['contenuto'], note.get("file_name"), labels)
                 
-                label_pin = "⚲" # Same icon for both states
+                label_pin = "⚲"
                 help_text = "Unpin" if is_pinned else "Pin"
                 if c_pin.button(label_pin, key=f"pin_{note['_id']}", help=help_text):
                      collection.update_one({"_id": note['_id']}, {"$set": {"pinned": not is_pinned}})

@@ -148,9 +148,16 @@ def convert_notes_to_json(note_list):
 
 def sanitize_links(html_content):
     if not html_content: return ""
-    # Replaces normal links with links that open in a NEW TAB (target="_blank")
-    # This makes them clickable without closing the app.
-    return re.sub(r'<a href="(.*?)"', r'<a href="\1" target="_blank" rel="noopener noreferrer"', html_content)
+    
+    # Questa regex cerca i tag <a href="..."> generati da Quill
+    # e inserisce forzatamente:
+    # 1. target="_blank" (per aprire in nuova scheda)
+    # 2. style="..." (per forzare il colore azzurro e la sottolineatura)
+    
+    pattern = r'<a href="([^"]*)"'
+    replacement = r'<a href="\1" target="_blank" style="color: #1E90FF !important; text-decoration: underline !important; cursor: pointer;" rel="noopener noreferrer"'
+    
+    return re.sub(pattern, replacement, html_content)
 
 # --- 6. TOOLBAR CONFIG ---
 toolbar_config = [

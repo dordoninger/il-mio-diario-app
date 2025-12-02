@@ -97,37 +97,28 @@ st.markdown(f"""
         text-transform: uppercase;
     }}
 
-    /* --- FIX DEFINITIVO BORDI ROSSI (Aggressivo) --- */
-
-    /* 1. Definizione dello stato normale (non attivo) per tutti i wrapper di input */
-    div[data-baseweb="input"],
-    div[data-baseweb="base-input"],
-    div[data-baseweb="textarea"],
-    div[data-testid="stNumberInput"] > div:first-child {{
-         border-radius: 8px !important;
-         border: 1px solid #e0e0e0 !important;
-         background-color: #ffffff !important;
-         box-shadow: none !important;
+    /* BLACK BORDER FIX (ALL INPUTS) */
+    div[data-baseweb="input"] {{ border-color: #e0e0e0 !important; border-radius: 8px !important; }}
+    div[data-baseweb="input"]:focus-within {{ border: 1px solid #000000 !important; box-shadow: none !important; }}
+    
+    div[data-baseweb="textarea"] {{ border-color: #e0e0e0 !important; border-radius: 8px !important; }}
+    div[data-baseweb="textarea"]:focus-within {{ border: 1px solid #000000 !important; box-shadow: none !important; }}
+    
+    /* SPECIFIC FIX FOR NUMBER INPUTS (Canvas Size) */
+    div[data-testid="stNumberInput"] div[data-baseweb="input"] {{
+        border-color: #e0e0e0 !important;
+        border-radius: 8px !important;
     }}
-
-    /* 2. Definizione dello stato FOCUS (attivo) */
-    /* Usa :focus-within per applicare lo stile al wrapper quando l'input interno è selezionato */
-    div[data-baseweb="input"]:focus-within,
-    div[data-baseweb="base-input"]:focus-within,
-    div[data-baseweb="textarea"]:focus-within,
-    div[data-testid="stNumberInput"] > div:first-child:focus-within {{
-        border: 1px solid #000000 !important;  /* Forza bordo nero */
-        box-shadow: none !important;          /* RIMUOVE L'OMBRA ROSSA */
-        outline: none !important;
+    div[data-testid="stNumberInput"] div[data-baseweb="input"]:focus-within {{
+        border: 1px solid #000000 !important;
+        box-shadow: none !important;
     }}
-
-    /* 3. Pulizia degli elementi input nativi interni */
-    /* Assicura che il campo di input HTML reale non abbia il proprio outline/bordo nativo */
-    input:focus, textarea:focus {{
+    div[data-testid="stNumberInput"] input:focus {{
         outline: none !important;
         box-shadow: none !important;
-        border-color: transparent !important; /* Nasconde il bordo interno */
     }}
+
+    input:focus {{ outline: none !important; border-color: #000000 !important; }}
 
     /* ANIMATION */
     @keyframes fade-in {{
@@ -287,6 +278,7 @@ def open_edit_popup(note_id, old_title, old_content, old_filename, old_labels, n
             with c_tool:
                 tool = st.radio("Tool", ["Pen", "Pencil", "Highlighter", "Eraser"], horizontal=True, key=f"d_t_{note_id}")
             with c_width:
+                # MODIFICA 2: Renamed Width to Stroke thickness
                 stroke_width = st.slider("Stroke thickness", 1, 30, 2, key=f"d_w_{note_id}")
             
             if tool == "Eraser": base_color = "#ffffff"
@@ -339,6 +331,7 @@ def open_edit_popup(note_id, old_title, old_content, old_filename, old_labels, n
                     img.save(buf, format='PNG')
                     val_bytes = buf.getvalue()
                     
+                    # MODIFICA 1: Check length > 100 to ensure valid PNG
                     if len(val_bytes) > 100:
                         update_data["file_data"] = bson.binary.Binary(val_bytes)
                         update_data["file_name"] = "drawing.png"
@@ -402,6 +395,7 @@ def open_trash():
         for note in trash_notes:
             with st.expander(f"🗑 {note['titolo']}"):
                 if note.get("tipo") == "disegno" and note.get("file_data"):
+                    # Check for valid image data in trash too
                     if len(note["file_data"]) > 100:
                         st.image(note["file_data"])
                 else:
@@ -488,7 +482,7 @@ with st.expander("Create New Note", expanded=expander_state):
         labels_input = st.text_input("Labels", key=f"draw_labels_{st.session_state.create_key}")
         
         c_w, c_h = st.columns(2)
-        # Note: These are 'stNumberInput' now fixed by CSS to be black on focus without red shadow
+        # Note: These are 'stNumberInput' which we fixed in CSS to be black on focus
         canv_width = c_w.number_input("Width (px)", 300, 2000, 600, key=f"cw_{st.session_state.create_key}")
         canv_height = c_h.number_input("Height (px)", 300, 2000, 400, key=f"ch_{st.session_state.create_key}")
 
@@ -499,6 +493,7 @@ with st.expander("Create New Note", expanded=expander_state):
         with c_tool:
             tool = st.radio("Tool", ["Pen", "Pencil", "Highlighter", "Eraser"], horizontal=True, key=f"dt_{st.session_state.create_key}")
         with c_width:
+            # MODIFICA 2: Renamed Width to Stroke thickness
             stroke_width = st.slider("Stroke thickness", 1, 30, 2, key=f"dw_{st.session_state.create_key}")
         
         if tool == "Eraser": base_color = "#ffffff"
@@ -536,8 +531,9 @@ with st.expander("Create New Note", expanded=expander_state):
                 img = Image.fromarray(canvas_result.image_data.astype('uint8'), 'RGBA')
                 buf = io.BytesIO()
                 img.save(buf, format='PNG')
-                val_bytes = buf.getvalue() 
+                val_bytes = buf.getvalue() # Get bytes
                 
+                # MODIFICA 1: Stronger check for valid image data (> 100 bytes)
                 if len(val_bytes) > 100: 
                     doc = {
                         "titolo": title_input,
@@ -604,6 +600,8 @@ def render_notes_grid(note_list):
                     st.write("")
                 
                 if note.get("tipo") == "disegno" and note.get("file_data"):
+                    # MODIFICA 1: Display check (avoid broken icon 0)
+                    # A valid PNG is almost certainly > 100 bytes.
                     if len(note["file_data"]) > 100:
                         st.image(note["file_data"], output_format="PNG")
                 else:

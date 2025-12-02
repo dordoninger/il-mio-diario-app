@@ -15,9 +15,8 @@ st.set_page_config(page_title="DOR NOTES", page_icon="📄", layout="wide")
 if 'text_size' not in st.session_state: st.session_state.text_size = "16px"
 if 'edit_trigger' not in st.session_state: st.session_state.edit_trigger = 0
 
-# Gestione apertura/chiusura tendina creazione
-# Iniziamo con False (chiuso)
-if 'create_expanded' not in st.session_state: st.session_state.create_expanded = False
+# KEY PER IL TRUCCO "PING-PONG" (CHIUSURA FORZATA TENDINA)
+if 'expander_toggle' not in st.session_state: st.session_state.expander_toggle = 0
 
 # Gestione chiave univoca per svuotare l'editor dopo il salvataggio
 if 'create_key' not in st.session_state: st.session_state.create_key = str(uuid.uuid4())
@@ -285,20 +284,19 @@ with head_col3:
 
 st.markdown("---") 
 
-# --- CREATE NOTE EXPANDER (FIXED NO-CRASH) ---
+# --- CREATE NOTE LOGIC (PING PONG FIX) ---
 
-# Rimuoviamo l'argomento 'key' che dava errore.
-# Usiamo st.session_state.create_expanded per controllare lo stato (True/False)
-with st.expander("Create New Note", expanded=st.session_state.create_expanded):
-    with st.form("create_note_form", clear_on_submit=True):
+# Questa funzione contiene tutto il form. La chiameremo due volte.
+def render_create_note_form(suffix_key):
+    with st.form(f"create_note_form_{suffix_key}", clear_on_submit=True):
         title_input = st.text_input("Title")
         
-        # Editor con chiave dinamica per reset totale
         content_input = st_quill(
             placeholder="Write your thoughts here...",
             html=True,
             toolbar=toolbar_config,
-            key=f"quill_create_{st.session_state.create_key}" 
+            # Chiave unica combinata con il reset key per pulizia totale
+            key=f"quill_create_{st.session_state.create_key}_{suffix_key}" 
         )
         uploaded_file = st.file_uploader("Attachment", type=['pdf', 'docx', 'txt', 'mp3', 'wav', 'jpg', 'png'])
         
@@ -319,17 +317,30 @@ with st.expander("Create New Note", expanded=st.session_state.create_expanded):
                 st.toast("Saved!", icon="✅")
                 time.sleep(0.5)
                 
-                # AZIONI POST-SALVATAGGIO:
-                # 1. Resettiamo la variabile di stato per chiudere la tendina al prossimo riavvio
-                st.session_state.create_expanded = False
-                
-                # 2. Aggiorna la chiave dell'editor per svuotarlo
+                # AZIONI DI RESET:
+                # 1. Cambia la chiave dell'editor per svuotarlo
                 st.session_state.create_key = str(uuid.uuid4())
                 
-                # 3. Ricarica la pagina: Streamlit leggerà create_expanded=False e chiuderà la tendina
+                # 2. IL TRUCCO PING-PONG: Cambia questo toggle (0 -> 1 -> 0)
+                # Questo costringe Streamlit a renderizzare l'ALTRO blocco if/else sotto.
+                # Per Streamlit, è un expander completamente nuovo, quindi nasce CHIUSO.
+                st.session_state.expander_toggle = 1 if st.session_state.expander_toggle == 0 else 0
+                
                 st.rerun()
             else:
                 st.warning("Title and content required.")
+
+# LOGICA PING-PONG: 
+# Se toggle è 0, disegniamo l'Expander A.
+# Se toggle è 1, disegniamo l'Expander B.
+# Poiché sono in rami diversi del codice, Streamlit resetta lo stato "aperto/chiuso" quando si passa da uno all'altro.
+if st.session_state.expander_toggle == 0:
+    with st.expander("Create New Note", expanded=False):
+        render_create_note_form("A")
+else:
+    with st.expander("Create New Note", expanded=False):
+        render_create_note_form("B")
+
 
 st.write("")
 query = st.text_input("🔍", placeholder="Search...", label_visibility="collapsed")

@@ -14,7 +14,7 @@ st.set_page_config(page_title="DOR NOTES", page_icon="📄", layout="wide")
 # --- 2. STATE MANAGEMENT ---
 if 'text_size' not in st.session_state: st.session_state.text_size = "16px"
 if 'edit_trigger' not in st.session_state: st.session_state.edit_trigger = 0
-# Gestione stato apertura tendina creazione (Richiesta 2)
+# Gestione stato apertura tendina creazione
 if 'create_expanded' not in st.session_state: st.session_state.create_expanded = False
 
 # --- 3. CSS AESTHETIC ---
@@ -90,15 +90,15 @@ st.markdown(f"""
         align-items: center;
     }}
     
-    /* Styling per sezione Pinned */
-    .pinned-header {
+    /* Styling per sezione Pinned (CORRETTO con doppie parentesi) */
+    .pinned-header {{
         font-size: 1.2rem;
         font-weight: bold;
         color: #333;
         margin-bottom: 10px;
         border-bottom: 2px solid #eee;
         padding-bottom: 5px;
-    }
+    }}
 </style>
 """, unsafe_allow_html=True)
 
@@ -190,7 +190,6 @@ def open_edit_popup(note_id):
     old_filename = note.get('file_name', None)
 
     # PULIZIA FORMULE (Richiesta 1: Fix regex aggressivo)
-    # [\s\S]*? assicura che venga rimosso TUTTO il contenuto dello span, inclusi a capo e residui visivi
     clean_content = re.sub(
         r'<span class="ql-formula"[\s\S]*?data-value="([^"]+)"[\s\S]*?>[\s\S]*?</span>', 
         r' **(Formula: \1)** ', 
@@ -267,7 +266,6 @@ def confirm_deletion(note_id):
 # --- MAIN LAYOUT ---
 
 # Richiesta 4: Allineamento tasti più vicino e a destra
-# Usiamo colonne asimmetriche: [Molto spazio per titolo, poco spazio btn1, poco spazio btn2]
 head_col1, head_col2, head_col3 = st.columns([8.5, 0.75, 0.75])
 
 with head_col1: 
@@ -281,9 +279,8 @@ st.markdown("---")
 
 # --- CREATE NOTE EXPANDER ---
 
-# Richiesta 2: Gestione automatica chiusura (expanded=...)
+# Richiesta 2: Gestione automatica chiusura
 with st.expander("Create New Note", expanded=st.session_state.create_expanded):
-    # clear_on_submit=True pulisce i campi
     with st.form("create_note_form", clear_on_submit=True):
         title_input = st.text_input("Title")
         
@@ -311,7 +308,6 @@ with st.expander("Create New Note", expanded=st.session_state.create_expanded):
                 collection.insert_one(doc)
                 st.toast("Saved!", icon="✅")
                 time.sleep(0.5)
-                # Imposta expander a False per chiuderlo al riavvio
                 st.session_state.create_expanded = False
                 st.rerun()
             else:
@@ -323,7 +319,6 @@ filter_query = {"deleted": {"$ne": True}}
 if query:
     filter_query = {"$and": [{"deleted": {"$ne": True}}, {"$or": [{"titolo": {"$regex": query, "$options": "i"}}, {"contenuto": {"$regex": query, "$options": "i"}}]}]}
 
-# Recupero tutte le note attive
 all_notes = list(collection.find(filter_query).sort("data", -1))
 
 # Richiesta 3: Separazione Note Pinned
@@ -373,12 +368,10 @@ def render_notes_grid(note_list):
 if not all_notes:
     st.info("No notes found.")
 else:
-    # Sezione PINNED
     if pinned_notes:
         st.markdown("<div class='pinned-header'>📌 Pinned Notes</div>", unsafe_allow_html=True)
         render_notes_grid(pinned_notes)
-        st.markdown("---") # Divisore tra pinnate e normali
+        st.markdown("---")
         st.markdown("<div class='pinned-header'>📝 All Notes</div>", unsafe_allow_html=True)
     
-    # Sezione ALTRE NOTE
     render_notes_grid(other_notes)

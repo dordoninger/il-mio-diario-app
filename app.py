@@ -19,17 +19,16 @@ st.set_page_config(page_title="DOR NOTES", page_icon="📄", layout="wide")
 if 'text_size' not in st.session_state: st.session_state.text_size = "16px"
 if 'edit_trigger' not in st.session_state: st.session_state.edit_trigger = 0
 if 'create_key' not in st.session_state: st.session_state.create_key = str(uuid.uuid4())
-if 'reset_counter' not in st.session_state: st.session_state.reset_counter = 0
 
-# SETTINGS DEFAULT (Auto-clean ON)
-if 'auto_clean_enabled' not in st.session_state: st.session_state.auto_clean_enabled = True
-
-# CALENDAR NAV STATE
+# States for Calendar
+if 'cal_edit_id' not in st.session_state: st.session_state.cal_edit_id = None
+if 'cal_create_date' not in st.session_state: st.session_state.cal_create_date = None
 if 'cal_year' not in st.session_state: st.session_state.cal_year = datetime.now().year
 if 'cal_month' not in st.session_state: st.session_state.cal_month = datetime.now().month
 
-# GRID COLUMNS SETTING
+# Settings Defaults
 if 'grid_cols' not in st.session_state: st.session_state.grid_cols = 4
+if 'auto_clean_enabled' not in st.session_state: st.session_state.auto_clean_enabled = True
 
 # --- 3. CSS AESTHETIC ---
 st.markdown(f"""
@@ -140,11 +139,11 @@ st.markdown(f"""
         letter-spacing: 1px;
     }}
     
-    /* CALENDAR DAY NOTE (MINIMAL LINE) */
+    /* CALENDAR DAY NOTE */
     .cal-note-container {{
         padding: 10px 0;
         margin-bottom: 5px;
-        border-bottom: 1px solid #eee; /* Thin grey line */
+        border-bottom: 1px solid #eee;
     }}
     .cal-note-container:last-child {{
         border-bottom: none;
@@ -314,9 +313,12 @@ def render_create_note_form(key_suffix, date_ref=None):
     else:
         title = st.text_input("Title (Optional)", key=f"dt_{key_suffix}")
         labels = st.text_input("Labels", key=f"dl_{key_suffix}")
+        
+        # SLIDERS FOR CANVAS SIZE
         c_w, c_h = st.columns(2)
-        cw = c_w.number_input("Width (px)", 300, 2000, 600, key=f"cw_{key_suffix}")
-        ch = c_h.number_input("Height (px)", 300, 2000, 400, key=f"ch_{key_suffix}")
+        cw = c_w.slider("Width (px)", 200, 1000, 600, key=f"cw_{key_suffix}")
+        ch = c_h.slider("Height (px)", 200, 1000, 400, key=f"ch_{key_suffix}")
+        
         c1, c2, c3 = st.columns([1, 2, 1])
         with c1:
             st.markdown("<b>Set colour</b>", unsafe_allow_html=True)
@@ -325,13 +327,16 @@ def render_create_note_form(key_suffix, date_ref=None):
             tl = st.radio("Tool", ["Pen", "Pencil", "Highlighter", "Eraser"], horizontal=True, key=f"tt_{key_suffix}")
         with c3:
             sw = st.slider("Width", 1, 30, 2, key=f"ss_{key_suffix}")
+            
         if tl == "Eraser": bc = "#ffffff"
         fc = bc
         if tl == "Pencil": fc = hex_to_rgba(bc, 0.7); sw = 2 if sw > 5 else sw
         elif tl == "Highlighter": fc = hex_to_rgba(bc, 0.4); sw = 15 if sw < 10 else sw
         elif tl == "Eraser": sw = 20 if sw < 10 else sw
+        
         ckey = f"cv_{cw}_{ch}_{key_suffix}"
         res = st_canvas(fill_color="rgba(0,0,0,0)", stroke_width=sw, stroke_color=fc, background_color="#FFF", update_streamlit=True, height=ch, width=cw, drawing_mode="freedraw", key=ckey)
+        
         if st.button("Save Drawing", key=f"bs_{key_suffix}"):
             if logic_save_note(title, labels, None, None, "Drawing", res, date_ref, recur_val, stop_year_val):
                 st.toast("Saved!", icon="✅")
@@ -363,8 +368,7 @@ def open_settings():
     json_data = convert_notes_to_json(all_notes)
     st.download_button("Download Backup (.json)", data=json_data, file_name=f"backup_{datetime.now().strftime('%Y%m%d')}.json", mime="application/json")
     st.write("**Maintenance**")
-    
-    # AUTO CLEAN TOGGLE (Default True)
+    # AUTO-CLEAN DEFAULT ON
     is_auto = st.toggle("Auto-delete items older than 30 days", value=st.session_state.auto_clean_enabled)
     if is_auto != st.session_state.auto_clean_enabled:
         st.session_state.auto_clean_enabled = is_auto
@@ -375,7 +379,6 @@ def open_settings():
 
 @st.dialog("Edit Note", width="large")
 def open_edit_popup(note_id, old_title, old_content, old_filename, old_labels, note_type, drawing_data=None, date_ref=None):
-    # This popup is now used for BOTH Dashboard and Calendar notes
     st.markdown("### Edit Content")
     labels_str = ", ".join(old_labels) if old_labels else ""
     
@@ -383,7 +386,6 @@ def open_edit_popup(note_id, old_title, old_content, old_filename, old_labels, n
         new_title = st.text_input("Title", value=old_title)
         new_labels_str = st.text_input("Labels", value=labels_str)
         
-        # IF IT IS A CALENDAR NOTE, ALLOW MOVING DATE
         new_date_str = None
         if date_ref:
             try:
@@ -393,6 +395,8 @@ def open_edit_popup(note_id, old_title, old_content, old_filename, old_labels, n
             except: pass
 
         new_content = old_content
+        canvas_result = None
+        new_file = None
         
         if note_type == "disegno":
             c_col, c_tool, c_width = st.columns([1, 2, 1])
@@ -410,6 +414,7 @@ def open_edit_popup(note_id, old_title, old_content, old_filename, old_labels, n
             elif tool == "Eraser": stroke_width = 20 if stroke_width < 10 else stroke_width
             
             init_draw = json.loads(drawing_data) if drawing_data else None
+            # FIXED CANVAS SIZE FOR EDITING
             canvas_result = st_canvas(fill_color="rgba(0,0,0,0)", stroke_width=stroke_width, stroke_color=final_color, background_color="#FFFFFF", initial_drawing=init_draw, update_streamlit=True, height=450, drawing_mode="freedraw", key=f"canvas_edit_{note_id}")
         else:
             unique_key = f"quill_edit_{note_id}_{st.session_state.edit_trigger}"
@@ -421,8 +426,7 @@ def open_edit_popup(note_id, old_title, old_content, old_filename, old_labels, n
             labels_list = [tag.strip() for tag in new_labels_str.split(",") if tag.strip()]
             update_data = {"titolo": new_title, "labels": labels_list, "data": datetime.now()}
             
-            if new_date_str: # Update date if it was a calendar note
-                update_data["calendar_date"] = new_date_str
+            if new_date_str: update_data["calendar_date"] = new_date_str
 
             if note_type == "disegno":
                 if canvas_result.image_data is not None:
@@ -442,6 +446,7 @@ def open_edit_popup(note_id, old_title, old_content, old_filename, old_labels, n
             
             collection.update_one({"_id": note_id}, {"$set": update_data})
             st.session_state.edit_trigger += 1 
+            st.session_state.cal_edit_id = None # Close inline logic if present
             st.rerun()
 
     if old_filename and note_type != "disegno":
@@ -534,6 +539,7 @@ tab_dash, tab_cal = st.tabs(["DASHBOARD", "CALENDAR"])
 
 # ================= DASHBOARD TAB =================
 with tab_dash:
+    # CREATE NOTE
     expander_label = f"Create New Note{'\u200b' * st.session_state.reset_counter}"
     with st.expander(expander_label, expanded=False):
         render_create_note_form("dash_create") 
@@ -649,13 +655,12 @@ with tab_cal:
     start_date_str = f"{st.session_state.cal_year}-{st.session_state.cal_month:02d}-01"
     end_date_str = f"{st.session_state.cal_year}-{st.session_state.cal_month:02d}-{num_days}"
     
-    # 1. FETCH REGULAR NOTES
+    # FETCH
     month_notes_reg = list(collection.find({
         "calendar_date": {"$gte": start_date_str, "$lte": end_date_str},
         "deleted": {"$ne": True}
     }))
     
-    # 2. FETCH RECURRING (Duplicate Logic Fix)
     month_notes_rec = list(collection.find({
         "recurrence": "yearly",
         "cal_month": st.session_state.cal_month,
@@ -663,34 +668,21 @@ with tab_cal:
         "$or": [{"recur_end_year": None}, {"recur_end_year": {"$gt": st.session_state.cal_year}}]
     }))
     
-    # FILTER OUT RECURRING IF SAME YEAR AS CREATION (AVOID DOUBLE SHOWING)
-    # If I created a recurring note in 2025, I see the "regular" instance in 2025.
-    # The "recurring" rule should only trigger for years > creation year.
     valid_recurring = []
-    reg_ids = {str(n["_id"]) for n in month_notes_reg} # Set of IDs already shown
-    
+    reg_ids = {str(n["_id"]) for n in month_notes_reg}
     for n in month_notes_rec:
-        # Check creation year from original date string
         orig_date = datetime.strptime(n["calendar_date"], "%Y-%m-%d")
-        if st.session_state.cal_year > orig_date.year:
-             valid_recurring.append(n)
-        # If same year, it's covered by month_notes_reg usually, 
-        # UNLESS the user moved the original instance to another date? 
-        # But if moved, calendar_date changed.
-        # Simple fix: Show recurring if ID is not in reg list (safety)
-        elif str(n["_id"]) not in reg_ids:
-             valid_recurring.append(n)
+        if st.session_state.cal_year > orig_date.year: valid_recurring.append(n)
+        elif str(n["_id"]) not in reg_ids: valid_recurring.append(n)
 
     all_cal_notes = month_notes_reg + valid_recurring
     
     notes_by_day = {}
     for n in all_cal_notes:
         if n.get("recurrence") == "yearly" and st.session_state.cal_year > datetime.strptime(n["calendar_date"], "%Y-%m-%d").year:
-             # Calculate dynamic date for recurring
              d = f"{st.session_state.cal_year}-{st.session_state.cal_month:02d}-{n['cal_day']:02d}"
         else:
              d = n["calendar_date"]
-            
         if d not in notes_by_day: notes_by_day[d] = []
         notes_by_day[d].append(n)
 
@@ -701,10 +693,40 @@ with tab_cal:
         dt = date(st.session_state.cal_year, st.session_state.cal_month, day)
         day_name = dt.strftime("%A")[:3]
         
-        # --- DAY HEADER (AGENDA STYLE) ---
+        # --- DEFAULT TASK NOTE CHECK ---
+        # If today has NO notes, or no "Compiti del giorno" note, create it.
+        # Check locally first to avoid useless DB writes
+        has_default = False
+        if date_str in notes_by_day:
+            for n in notes_by_day[date_str]:
+                if n.get('titolo') == "Compiti del giorno" and n.get('is_default'):
+                    has_default = True
+                    break
+        
+        if not has_default:
+            # Create Default Note
+            def_doc = {
+                "titolo": "Compiti del giorno",
+                "contenuto": "",
+                "labels": [],
+                "data": datetime.now(),
+                "custom_order": -1, # Always top
+                "tipo": "testo_ricco",
+                "deleted": False, "pinned": False,
+                "calendar_date": date_str,
+                "is_default": True
+            }
+            collection.insert_one(def_doc)
+            # Add to local list manually so we see it immediately without rerun
+            if date_str not in notes_by_day: notes_by_day[date_str] = []
+            notes_by_day[date_str].insert(0, def_doc)
+
         st.markdown(f"#### {day:02d} {day_name}", unsafe_allow_html=True)
         
+        # SORT NOTES (Default first)
         notes_today = notes_by_day.get(date_str, [])
+        notes_today.sort(key=lambda x: x.get('custom_order', 0))
+        
         if notes_today:
             for note in notes_today:
                 with st.container():
@@ -724,20 +746,22 @@ with tab_cal:
                         st.markdown(f"<div class='quill-read-content'>{process_content_for_display(note['contenuto'])}</div>", unsafe_allow_html=True)
                     
                     if note.get("file_name") and note.get("tipo") != "disegno":
-                        st.download_button("Download", data=note["file_data"], file_name=note["file_name"], key=f"cdl_{note['_id']}")
+                        st.download_button("Download", data=note["file_data"], file_name=note["file_name"], key=f"dlc_{note['_id']}")
                     
                     c1, c2 = st.columns(2)
                     if c1.button("Edit", key=f"ce_{note['_id']}"):
                         draw_data = note.get("drawing_json", None)
-                        # Open GLOBAL Edit Popup with date_ref
                         open_edit_popup(note['_id'], note['titolo'], note['contenuto'], note.get("file_name"), note.get("labels", []), note.get("tipo"), draw_data, date_ref=date_str)
                     
-                    if c2.button("Delete", key=f"cd_{note['_id']}"):
-                        confirm_deletion(note['_id'])
+                    # DELETE ONLY IF NOT DEFAULT
+                    if not note.get('is_default'):
+                        if c2.button("Delete", key=f"cd_{note['_id']}"):
+                            confirm_deletion(note['_id'])
                     
                     st.markdown("</div>", unsafe_allow_html=True)
         
         # Quick Add Button
+        c_add, c_empty = st.columns([1, 4]) # Smaller button visual
         if st.session_state.cal_create_date == date_str:
             with st.container():
                 st.markdown(f"**New Note for {day:02d}**")
@@ -746,8 +770,9 @@ with tab_cal:
                     st.session_state.cal_create_date = None
                     st.rerun()
         else:
-            if st.button("➕ Add Note", key=f"add_{date_str}"):
-                st.session_state.cal_create_date = date_str
-                st.rerun()
+            with c_add:
+                if st.button("+ Add Note", key=f"add_{date_str}"):
+                    st.session_state.cal_create_date = date_str
+                    st.rerun()
         
         st.markdown("<hr style='margin: 5px 0; opacity: 0.3;'>", unsafe_allow_html=True)

@@ -52,19 +52,16 @@ st.markdown(f"""
         line-height: 1.6;
     }}
     
-    /* FORCE LINKS TO BE BLUE & UNDERLINED IN READ MODE */
+    /* LINKS IN READ MODE */
     .quill-read-content a {{
         color: #1E90FF !important;
         text-decoration: underline !important;
-        pointer-events: auto !important;
+        cursor: pointer !important;
     }}
 
-    /* INPUTS FOCUS (BLACK BORDER instead of RED) */
-    .stTextInput > div > div > input:focus {{
-        border-color: #000000 !important;
-        box-shadow: 0 0 0 1px #000000 !important;
-    }}
-    div[data-baseweb="input"]:focus-within {{
+    /* --- INPUTS FOCUS FIX (SAFE VERSION) --- */
+    /* We explicitly target Streamlit Input Widgets to avoid breaking Quill's internal tooltips */
+    .stTextInput input:focus, .stTextArea textarea:focus {{
         border-color: #000000 !important;
         box-shadow: 0 0 0 1px #000000 !important;
     }}
@@ -128,18 +125,11 @@ def convert_notes_to_json(note_list):
     return json.dumps(export_list, indent=4)
 
 def sanitize_links(html_content):
-    """
-    This function ensures that links in the READ view open in a new tab.
-    It does NOT affect the editing view.
-    """
     if not html_content: return ""
-    # Regex to inject target="_blank" into <a href="..."> tags if missing
-    # We use a simple regex that finds hrefs and ensures they are clickable
-    html_content = re.sub(r'<a href="(.*?)"', r'<a href="\1" target="_blank" rel="noopener noreferrer"', html_content)
-    return html_content
+    # Forces links to open in new tab (Read Mode Only)
+    return re.sub(r'<a href="(.*?)"', r'<a href="\1" target="_blank" rel="noopener noreferrer"', html_content)
 
 # --- 6. TOOLBAR CONFIG ---
-# Standard full toolbar
 toolbar_config = [
     ['bold', 'italic', 'underline', 'strike'],
     [{ 'header': [1, 2, 3, False] }],
@@ -148,8 +138,7 @@ toolbar_config = [
     [{ 'color': [] }, { 'background': [] }],
     [{ 'font': [] }],
     [{ 'align': [] }],
-    ['image', 'formula'],
-    ['link'], # Link button explicitly enabled
+    ['link', 'image', 'formula'],
 ]
 
 # --- 7. POPUPS (DIALOGS) ---
@@ -176,27 +165,36 @@ def open_settings():
 @st.dialog("Edit Note", width="large")
 def open_edit_popup(note_id, old_title, old_content, old_filename):
     st.markdown("### Edit Content")
-    new_title = st.text_input("Title", value=old_title)
     
-    # CRITICAL FIX FOR FORMULAS: 
-    # We generate a completely new key using UUID every time the popup loads.
-    # This forces Streamlit/Quill to destroy the old editor component and build a fresh one,
-    # preventing the "undefined render" crash when loading complex HTML/Latex.
-    unique_key = f"edit_editor_{note_id}_{uuid.uuid4()}"
+    # Use session state to handle values robustly
+    if f"edit_title_{note_id}" not in st.session_state:
+        st.session_state[f"edit_title_{note_id}"] = old_title
     
-    new_content = st_quill(value=old_content, toolbar=toolbar_config, html=True, key=unique_key)
+    new_title = st.text_input("Title", key=f"edit_title_{note_id}")
+    
+    # KEY FIX: Generate a completely new key for the editor every time
+    # This prevents the "render undefined" error by forcing a fresh load
+    unique_key = f"quill_edit_{note_id}_{uuid.uuid4()}"
+    
+    st.write("Edit text below:")
+    new_content = st_quill(
+        value=old_content, 
+        toolbar=toolbar_config, 
+        html=True, 
+        key=unique_key
+    )
     
     st.divider()
-    st.markdown("### Manage Attachments")
+    st.markdown("### Attachments")
     
     if old_filename:
         c1, c2 = st.columns([3, 1])
-        c1.info(f"Current file: **{old_filename}**")
-        if c2.button("Remove File", type="secondary"):
+        c1.info(f"File: **{old_filename}**")
+        if c2.button("Remove", key=f"rm_file_{note_id}"):
             collection.update_one({"_id": note_id}, {"$set": {"file_name": None, "file_data": None}})
             st.rerun()
             
-    new_file = st.file_uploader("Upload new file (Overwrites current)", type=['pdf', 'docx', 'txt', 'mp3', 'wav', 'jpg', 'png'])
+    new_file = st.file_uploader("Replace File", type=['pdf', 'docx', 'txt', 'mp3', 'wav', 'jpg', 'png'], key=f"up_{note_id}")
     
     if st.button("Save Changes", type="primary"):
         update_data = {
@@ -258,7 +256,6 @@ st.markdown("---")
 with st.expander("Create New Note"):
     title_input = st.text_input("Title", key=f"tit_{st.session_state.editor_key}")
     
-    # TRANSLATED PLACEHOLDER
     content_input = st_quill(
         placeholder="Write your thoughts here...",
         html=True,

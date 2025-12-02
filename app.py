@@ -1,58 +1,56 @@
 import streamlit as st
 import pymongo
-from datetime import datetime
+from datetime import datetime, timedelta
 from streamlit_quill import st_quill
 import time
 import uuid
 import bson.binary
+import json
 
 # --- 1. CONFIGURAZIONE PAGINA ---
 st.set_page_config(page_title="DBJ Notes", page_icon="📝", layout="wide")
 
-# --- 2. GESTIONE STATO IMPOSTAZIONI (Default) ---
-if 'settings_bg_color' not in st.session_state: st.session_state.settings_bg_color = "#f0f2f6" # Grigio chiaro default
-if 'settings_note_color' not in st.session_state: st.session_state.settings_note_color = "#ffffff" # Bianco default
-if 'settings_text_color' not in st.session_state: st.session_state.settings_text_color = "#000000" # Nero default
+# --- 2. GESTIONE STATO & PREFERENZE ---
+if 'text_size' not in st.session_state: st.session_state.text_size = "16px" # Default
 
-# --- 3. CSS DINAMICO (Applica i colori scelti) ---
+# --- 3. CSS DINAMICO ---
 st.markdown(f"""
 <style>
-    /* Applica colore di sfondo all'intera app */
-    .stApp {{
-        background-color: {st.session_state.settings_bg_color};
-    }}
-    
-    /* Stile per le note (Expander) */
-    .streamlit-expanderContent {{
-        background-color: {st.session_state.settings_note_color};
-        color: {st.session_state.settings_text_color};
-        border-radius: 0 0 10px 10px;
-    }}
-    .streamlit-expanderHeader {{
-        background-color: {st.session_state.settings_note_color};
-        color: {st.session_state.settings_text_color} !important;
-        border-radius: 10px;
-        font-weight: bold;
-    }}
-    
-    /* Titolo Minimal */
+    /* TITOLO MINIMAL */
     .minimal-title {{
         font-family: 'Helvetica', sans-serif;
         font-weight: 800;
         font-size: 2.5rem;
-        color: {st.session_state.settings_text_color};
+        color: #1a1a1a;
         text-align: center;
         margin-top: -10px;
-        text-shadow: 2px 2px 4px rgba(0,0,0,0.1);
     }}
 
-    /* Focus Inputs */
+    /* EXPANDER STYLE */
+    .streamlit-expanderHeader {{
+        font-weight: bold;
+        font-size: 1.1rem;
+        color: #333;
+        background-color: #fff;
+        border-radius: 5px;
+    }}
+    .streamlit-expanderContent {{
+        border-top: 1px solid #f0f0f0;
+        font-size: {st.session_state.text_size}; /* Dimensione Dinamica */
+    }}
+    
+    /* Contenuto Quill (Lettura) */
+    .quill-read-content {{
+        font-size: {st.session_state.text_size} !important;
+    }}
+
+    /* INPUTS FOCUS */
     .stTextInput > div > div > input:focus {{
         border-color: #333 !important;
         box-shadow: 0 0 0 1px #333 !important;
     }}
     
-    /* Animazione Logo */
+    /* ANIMAZIONE LOGO */
     @keyframes pulse-logo {{
         0% {{ transform: scale(1); opacity: 0.6; }}
         50% {{ transform: scale(1.05); opacity: 1; }}
@@ -67,7 +65,7 @@ st.markdown(f"""
 </style>
 """, unsafe_allow_html=True)
 
-# --- 4. INIT E CONNESSIONE DB ---
+# --- 4. INIT & CONNESSIONE DB ---
 if 'first_load' not in st.session_state:
     placeholder = st.empty()
     with placeholder.container():
@@ -92,53 +90,73 @@ if client is None: st.stop()
 db = client.diario_db
 collection = db.note
 
-# --- 5. TOOLBAR EDITOR (Aggiornata con Apici/Pedici/Latex) ---
+# --- 5. FUNZIONI UTILITÀ (Backup) ---
+def converti_note_per_json(note_list):
+    # Converte i dati MongoDB (ObjectId, DateTime) in stringhe per il JSON
+    export_list = []
+    for nota in note_list:
+        nota_export = nota.copy()
+        nota_export['_id'] = str(nota['_id'])
+        nota_export['data'] = nota['data'].strftime("%Y-%m-%d %H:%M:%S")
+        if 'file_data' in nota_export: del nota_export['file_data'] # Non esportiamo i binari nel JSON testo
+        export_list.append(nota_export)
+    return json.dumps(export_list, indent=4)
+
+# --- 6. TOOLBAR EDITOR ---
 toolbar_config = [
     ['bold', 'italic', 'underline', 'strike'],
     [{ 'header': [1, 2, 3, False] }],
     [{ 'list': 'ordered'}, { 'list': 'bullet' }],
-    [{ 'script': 'sub'}, { 'script': 'super' }], # <--- ECCO APICI E PEDICI
+    [{ 'script': 'sub'}, { 'script': 'super' }], 
     [{ 'color': [] }, { 'background': [] }],
+    [{ 'font': [] }],
     [{ 'align': [] }],
-    ['image', 'formula'], # <--- ECCO LA FORMULA LATEX
+    ['image', 'formula'],
 ]
 
-# --- 6. DIALOGHI (POPUP) ---
+# --- 7. DIALOGHI (POPUP) ---
 
-# Popup Impostazioni
+# Popup Impostazioni (COMPLETO)
 @st.dialog("Impostazioni ⚙️")
 def apri_impostazioni():
-    st.subheader("Personalizzazione Colori")
+    st.subheader("🛠️ Gestione Dati")
     
-    # Selettori Colore
-    col_bg = st.color_picker("Sfondo Pagina", value=st.session_state.settings_bg_color)
-    col_note = st.color_picker("Sfondo Note", value=st.session_state.settings_note_color)
-    col_text = st.color_picker("Colore Testo Principale", value=st.session_state.settings_text_color)
+    # 1. BACKUP
+    st.write("**Backup Note**")
+    tutte_le_note = list(collection.find({}))
+    json_dati = converti_note_per_json(tutte_le_note)
+    st.download_button(
+        label="⬇️ Scarica Backup Completo (.json)",
+        data=json_dati,
+        file_name=f"backup_dbjnotes_{datetime.now().strftime('%Y%m%d')}.json",
+        mime="application/json"
+    )
     
     st.divider()
-    st.write("Preset veloci:")
-    c1, c2 = st.columns(2)
-    if c1.button("☀️ Tema Chiaro"):
-        st.session_state.settings_bg_color = "#f0f2f6"
-        st.session_state.settings_note_color = "#ffffff"
-        st.session_state.settings_text_color = "#000000"
-        st.rerun()
-    if c2.button("🌙 Tema Scuro"):
-        st.session_state.settings_bg_color = "#1e1e1e"
-        st.session_state.settings_note_color = "#2d2d2d"
-        st.session_state.settings_text_color = "#e0e0e0"
+    
+    # 2. DIMENSIONE TESTO
+    st.write("**Accessibilità**")
+    size_opt = st.select_slider("Dimensione Testo Note", options=["14px", "16px", "18px", "20px", "24px"], value=st.session_state.text_size)
+    if size_opt != st.session_state.text_size:
+        st.session_state.text_size = size_opt
         st.rerun()
         
-    if st.button("💾 Applica Personalizzati", type="primary"):
-        st.session_state.settings_bg_color = col_bg
-        st.session_state.settings_note_color = col_note
-        st.session_state.settings_text_color = col_text
-        st.rerun()
+    st.divider()
+    
+    # 3. PULIZIA AUTOMATICA
+    st.write("**Manutenzione**")
+    if st.button("🧹 Elimina dal cestino note più vecchie di 30 giorni"):
+        data_limite = datetime.now() - timedelta(days=30)
+        result = collection.delete_many({
+            "deleted": True,
+            "data": {"$lt": data_limite}
+        })
+        st.success(f"Eliminate {result.deleted_count} note vecchie.")
 
 # Popup Modifica
 @st.dialog("Modifica Nota", width="large")
 def apri_popup_modifica(nota_id, titolo_vecchio, contenuto_vecchio):
-    st.markdown("### Modifica testo")
+    st.markdown("### Modifica contenuto")
     nuovo_titolo = st.text_input("Titolo", value=titolo_vecchio)
     nuovo_contenuto = st_quill(value=contenuto_vecchio, toolbar=toolbar_config, html=True, key=f"edit_{nota_id}")
     
@@ -187,8 +205,7 @@ def conferma_eliminazione(nota_id):
 
 st.markdown("<div class='minimal-title'>DBJ Notes</div>", unsafe_allow_html=True)
 
-# --- BARRA STRUMENTI: CREA | CESTINO | IMPOSTAZIONI ---
-# Layout: Colonna grande per crea, due piccole per le icone
+# --- BARRA STRUMENTI ---
 col_crea, col_trash, col_settings = st.columns([20, 1, 1])
 
 with col_crea:
@@ -212,6 +229,7 @@ with col_crea:
                     "data": datetime.now(),
                     "tipo": "testo_ricco",
                     "deleted": False,
+                    "pinned": False, # Campo per il Fissaggio in alto
                     "file_name": uploaded_file.name if uploaded_file else None,
                     "file_data": bson.binary.Binary(uploaded_file.getvalue()) if uploaded_file else None
                 }
@@ -238,12 +256,13 @@ st.divider()
 # --- RICERCA ---
 query = st.text_input("🔍", placeholder="Cerca nota...", label_visibility="collapsed")
 
-# --- GRIGLIA NOTE (TENDINE) ---
+# --- GRIGLIA NOTE ---
 filtro = {"deleted": {"$ne": True}}
 if query:
     filtro = {"$and": [{"deleted": {"$ne": True}}, {"$or": [{"titolo": {"$regex": query, "$options": "i"}}, {"contenuto": {"$regex": query, "$options": "i"}}]}]}
 
-note_attive = list(collection.find(filtro).sort("data", -1))
+# ORDINAMENTO: Prima le Pinned (True > False), poi per Data (Recente > Vecchia)
+note_attive = list(collection.find(filtro).sort([("pinned", -1), ("data", -1)]))
 
 if not note_attive:
     st.info("Nessuna nota.")
@@ -251,11 +270,24 @@ else:
     cols = st.columns(3)
     for index, nota in enumerate(note_attive):
         with cols[index % 3]:
-            # Icona graffetta se c'è file
-            icona = "📎 " if note_attive[index].get("file_name") else ""
+            # Gestione Icone Titolo
+            icona_clip = "📎 " if nota.get("file_name") else ""
+            is_pinned = nota.get("pinned", False)
+            icona_pin = "📌 " if is_pinned else ""
             
-            with st.expander(f"{icona}📄 {nota['titolo']}"):
-                st.markdown(nota['contenuto'], unsafe_allow_html=True)
+            # Tendina Nota
+            with st.expander(f"{icona_pin}{icona_clip}📄 {nota['titolo']}"):
+                
+                # TASTO FISSAGGIO (PIN) IN EVIDENZA
+                col_pin, _ = st.columns([1, 3])
+                label_pin = "Sblocca" if is_pinned else "📌 Fissa in alto"
+                if col_pin.button(label_pin, key=f"pin_{nota['_id']}", help="Metti in cima alla lista"):
+                    new_state = not is_pinned
+                    collection.update_one({"_id": nota['_id']}, {"$set": {"pinned": new_state}})
+                    st.rerun()
+
+                # Contenuto (con classe CSS per dimensione font)
+                st.markdown(f"<div class='quill-read-content'>{nota['contenuto']}</div>", unsafe_allow_html=True)
                 
                 if nota.get("file_name"):
                     st.markdown("---")

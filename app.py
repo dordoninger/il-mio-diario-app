@@ -37,7 +37,6 @@ st.markdown(f"""
     }}
 
     /* --- ROUNDED NOTES & COMPACT HEADERS --- */
-    
     .streamlit-expander {{
         border-radius: 12px !important;
         border: 1px solid #e0e0e0 !important;
@@ -45,7 +44,6 @@ st.markdown(f"""
         background-color: white;
         margin-bottom: 10px;
     }}
-    
     .streamlit-expanderHeader {{
         font-weight: 600;
         font-size: 1.0rem;
@@ -55,7 +53,6 @@ st.markdown(f"""
         padding-top: 0.5rem !important;
         padding-bottom: 0.5rem !important;
     }}
-    
     .streamlit-expanderContent {{
         border-top: 1px solid #f8f8f8;
         font-size: {st.session_state.text_size};
@@ -69,30 +66,47 @@ st.markdown(f"""
         font-family: 'Georgia', serif;
         line-height: 1.6;
     }}
-    
     .quill-read-content a {{
         color: #1E90FF !important;
         text-decoration: underline !important;
         cursor: pointer !important;
     }}
-    
-    /* Checkbox list style fix for Read Mode */
-    .quill-read-content ul[data-checked] {{
+
+    /* --- CHECKBOX VISIBILITY FIX (READ MODE) --- */
+    /* This makes the hidden Quill checkboxes visible in Read Mode */
+    .quill-read-content ul {{
         padding-left: 0;
-    }}
-    .quill-read-content li[data-checked] {{
         list-style-type: none;
-        display: flex;
-        align-items: center;
     }}
-    .quill-read-content li[data-checked]::before {{
-        content: "☐";
-        margin-right: 8px;
+    
+    .quill-read-content li[data-list="checked"] {{
+        position: relative;
+        padding-left: 25px;
+        color: #888; /* Slightly dimmed when checked */
+        text-decoration: line-through; /* Optional: Strike text */
+    }}
+    .quill-read-content li[data-list="checked"]::before {{
+        content: "☑";
+        position: absolute;
+        left: 0;
+        top: 0;
+        color: #4CAF50; /* Green check */
+        font-weight: bold;
         font-size: 1.2em;
     }}
-    .quill-read-content li[data-checked="true"]::before {{
-        content: "☑";
-        color: green;
+    
+    .quill-read-content li[data-list="unchecked"] {{
+        position: relative;
+        padding-left: 25px;
+    }}
+    .quill-read-content li[data-list="unchecked"]::before {{
+        content: "☐";
+        position: absolute;
+        left: 0;
+        top: 0;
+        color: #555;
+        font-weight: bold;
+        font-size: 1.2em;
     }}
 
     /* BADGE STYLE */
@@ -211,11 +225,11 @@ def render_badges(labels_list):
         html += f"<span class='dor-badge'>{label}</span>"
     return html
 
-# --- TOOLBAR CONFIG (ADDED CHECKLIST) ---
+# --- TOOLBAR CONFIG ---
 toolbar_config = [
     ['bold', 'italic', 'underline', 'strike'],
     [{ 'header': [1, 2, 3, False] }],
-    [{ 'list': 'ordered'}, { 'list': 'bullet'}, { 'list': 'check' }], # Added Checklist
+    [{ 'list': 'ordered'}, { 'list': 'bullet'}, { 'list': 'check' }], # CHECKLIST ENABLED
     [{ 'script': 'sub'}, { 'script': 'super' }], 
     [{ 'color': [] }, { 'background': [] }],
     [{ 'font': [] }],
@@ -377,8 +391,7 @@ with head_col3:
 
 st.markdown("---") 
 
-# --- CREATE NOTE & SEARCH ---
-# 1. CREATE NOTE
+# --- CREATE NOTE ---
 expander_label = f"Create New Note{'\u200b' * st.session_state.reset_counter}"
 with st.expander(expander_label, expanded=False):
     with st.form("create_note_form", clear_on_submit=True):
@@ -414,9 +427,7 @@ with st.expander(expander_label, expanded=False):
             else:
                 st.warning("Title and content required.")
 
-st.write("") # Spacer
-
-# 2. SEARCH BAR
+st.write("")
 query = st.text_input("🔍", placeholder="Search...", label_visibility="collapsed")
 
 filter_query = {"deleted": {"$ne": True}}

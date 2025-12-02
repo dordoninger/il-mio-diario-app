@@ -218,8 +218,6 @@ def open_edit_popup(note_id, old_title, old_content, old_filename, old_labels):
         # LABELS
         new_labels_str = st.text_input("Labels (comma separated)", value=labels_str, placeholder="Important, Work...")
         
-        # RIMOSSA LA SAFE MODE COME RICHIESTO
-        
         unique_key = f"quill_edit_{note_id}_{st.session_state.edit_trigger}"
         new_content = st_quill(value=old_content, toolbar=toolbar_config, html=True, key=unique_key)
         
@@ -264,7 +262,7 @@ def open_trash():
             st.rerun()
         st.divider()
         for note in trash_notes:
-            with st.expander(f"🗑️ {note['titolo']}"):
+            with st.expander(f"🗑 {note['titolo']}"):
                 safe_content = sanitize_links(note['contenuto'])
                 st.markdown(f"<div class='quill-read-content'>{safe_content}</div>", unsafe_allow_html=True)
                 c1, c2 = st.columns(2)
@@ -374,16 +372,16 @@ def render_notes_grid(note_list):
             is_pinned = note.get("pinned", False)
             icon_pin = "" if is_pinned else ""
             
-            # --- MODIFICA VISIBILITÀ ETICHETTE ---
-            # Mostriamo le etichette nel titolo della tendina (es: [Tag1] [Tag2])
+            # --- LABEL SUFFIX ---
+            # Shows generic **[LABELS]** if any label exists
             labels = note.get("labels", [])
-            labels_header = ""
+            labels_suffix = ""
             if labels:
-                labels_header = " " + " ".join([f"[{lbl}]" for lbl in labels])
+                labels_suffix = " **[LABELS]**"
             
-            with st.expander(f"{icon_pin}{icon_clip} {note['titolo']}{labels_header}"):
+            with st.expander(f"{icon_pin}{icon_clip} {note['titolo']}{labels_suffix}"):
                 
-                # Le mostriamo anche dentro come badge carini
+                # Show actual colored badges inside
                 if labels:
                     st.markdown(render_badges(labels), unsafe_allow_html=True)
                     st.write("")

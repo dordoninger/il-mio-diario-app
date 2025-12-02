@@ -18,12 +18,7 @@ st.set_page_config(page_title="DOR NOTES", page_icon="📄", layout="wide")
 if 'text_size' not in st.session_state: st.session_state.text_size = "16px"
 if 'edit_trigger' not in st.session_state: st.session_state.edit_trigger = 0
 if 'create_key' not in st.session_state: st.session_state.create_key = str(uuid.uuid4())
-
-# EXPANDER STATE MANAGEMENT
-if 'create_expanded' not in st.session_state: st.session_state.create_expanded = False
-
-# Draw Color State
-if 'draw_color' not in st.session_state: st.session_state.draw_color = "#000000"
+if 'reset_counter' not in st.session_state: st.session_state.reset_counter = 0
 
 # GRID COLUMNS SETTING
 if 'grid_cols' not in st.session_state: st.session_state.grid_cols = 4
@@ -97,19 +92,18 @@ st.markdown(f"""
         text-transform: uppercase;
     }}
 
-    /* BLACK BORDER FIX (Generico per tutti gli input) */
+    /* BLACK BORDER FIX (ALL INPUTS) */
     div[data-baseweb="input"] {{ border-color: #e0e0e0 !important; border-radius: 8px !important; }}
-    div[data-baseweb="input"]:focus-within {{ border: 1px solid #000000 !important; box-shadow: none !important; }}
+    div[data-baseweb="input"]:focus-within {{ border: 1px solid #333333 !important; box-shadow: none !important; }}
     
     div[data-baseweb="textarea"] {{ border-color: #e0e0e0 !important; border-radius: 8px !important; }}
-    div[data-baseweb="textarea"]:focus-within {{ border: 1px solid #000000 !important; box-shadow: none !important; }}
+    div[data-baseweb="textarea"]:focus-within {{ border: 1px solid #333333 !important; box-shadow: none !important; }}
     
-    /* Input generici focus override */
-    input:focus {{ 
-        outline: none !important; 
-        border-color: #000000 !important; 
-        box-shadow: none !important;
-    }}
+    div[data-testid="stNumberInput"] > div > div {{ border-color: #e0e0e0 !important; border-radius: 8px !important; }}
+    div[data-testid="stNumberInput"] > div > div:focus-within {{ border: 1px solid #333333 !important; box-shadow: none !important; }}
+    div[data-testid="stNumberInput"] input:focus {{ border-color: transparent !important; outline: none !important; }}
+
+    input:focus {{ outline: none !important; border-color: #000000 !important; }}
 
     /* ANIMATION */
     @keyframes fade-in {{
@@ -209,10 +203,6 @@ def hex_to_rgba(hex_color, opacity):
     hex_color = hex_color.lstrip('#')
     return f"rgba({int(hex_color[0:2], 16)}, {int(hex_color[2:4], 16)}, {int(hex_color[4:6], 16)}, {opacity})"
 
-# Helper to manage expander state
-def toggle_create_expander():
-    st.session_state.create_expanded = True
-
 # --- 6. TOOLBAR CONFIG ---
 toolbar_config = [
     ['bold', 'italic', 'underline', 'strike'],
@@ -269,7 +259,7 @@ def open_edit_popup(note_id, old_title, old_content, old_filename, old_labels, n
             with c_tool:
                 tool = st.radio("Tool", ["Pen", "Pencil", "Highlighter", "Eraser"], horizontal=True, key=f"d_t_{note_id}")
             with c_width:
-                stroke_width = st.slider("Stroke thickness", 1, 30, 2, key=f"d_w_{note_id}")
+                stroke_width = st.slider("Width", 1, 30, 2, key=f"d_w_{note_id}")
             
             if tool == "Eraser": base_color = "#ffffff"
             
@@ -320,8 +310,7 @@ def open_edit_popup(note_id, old_title, old_content, old_filename, old_labels, n
                     buf = io.BytesIO()
                     img.save(buf, format='PNG')
                     val_bytes = buf.getvalue()
-                    
-                    if len(val_bytes) > 100:
+                    if len(val_bytes) > 0:
                         update_data["file_data"] = bson.binary.Binary(val_bytes)
                         update_data["file_name"] = "drawing.png"
             else:
@@ -357,19 +346,53 @@ def open_move_popup(current_note_id):
         return f"{status} {n['titolo']}"
 
     options = {n["_id"]: get_label(n) for n in candidates}
-    selected_target_id = st.selectbox("Swap with:", options.keys(), format_func=lambda x: options[x])
+    selected_target_id = st.selectbox("Select Target Note:", options.keys(), format_func=lambda x: options[x])
     
-    if st.button("Confirm Swap ⇄", type="primary"):
-        current_note = collection.find_one({"_id": current_note_id})
-        target_note = collection.find_one({"_id": selected_target_id})
-        if current_note and target_note:
-            order_curr = current_note.get("custom_order", 0)
-            pinned_curr = current_note.get("pinned", False)
-            order_targ = target_note.get("custom_order", 0)
-            pinned_targ = target_note.get("pinned", False)
-            collection.update_one({"_id": current_note_id}, {"$set": {"custom_order": order_targ, "pinned": pinned_targ}})
-            collection.update_one({"_id": selected_target_id}, {"$set": {"custom_order": order_curr, "pinned": pinned_curr}})
-            st.rerun()
+    # --- DUAL ACTION COLUMNS ---
+    c_swap, c_insert = st.columns(2)
+    
+    with c_swap:
+        if st.button("Swap Positions ⇄", use_container_width=True):
+            current_note = collection.find_one({"_id": current_note_id})
+            target_note = collection.find_one({"_id": selected_target_id})
+            if current_note and target_note:
+                order_curr = current_note.get("custom_order", 0)
+                pinned_curr = current_note.get("pinned", False)
+                order_targ = target_note.get("custom_order", 0)
+                pinned_targ = target_note.get("pinned", False)
+                
+                collection.update_one({"_id": current_note_id}, {"$set": {"custom_order": order_targ, "pinned": pinned_targ}})
+                collection.update_one({"_id": selected_target_id}, {"$set": {"custom_order": order_curr, "pinned": pinned_curr}})
+                st.rerun()
+    
+    with c_insert:
+        if st.button("Insert Before ⬆", use_container_width=True):
+            current_note = collection.find_one({"_id": current_note_id})
+            target_note = collection.find_one({"_id": selected_target_id})
+            
+            if current_note and target_note:
+                target_order = target_note.get("custom_order", 0)
+                target_pinned = target_note.get("pinned", False)
+                
+                # Update current note to take target's place/properties
+                collection.update_one({"_id": current_note_id}, {"$set": {"custom_order": target_order, "pinned": target_pinned}})
+                
+                # Shift all notes (>= target_order) down by 1
+                # Filtering to avoid shifting the note we just moved (if it was already in list)
+                collection.update_many(
+                    {
+                        "custom_order": {"$gte": target_order},
+                        "_id": {"$ne": current_note_id} 
+                    },
+                    {"$inc": {"custom_order": 1}}
+                )
+                
+                # Re-normalize orders to prevent gaps
+                all_sorted = list(collection.find().sort("custom_order", 1))
+                for i, n in enumerate(all_sorted):
+                    collection.update_one({"_id": n["_id"]}, {"$set": {"custom_order": i}})
+                
+                st.rerun()
 
 @st.dialog("Trash", width="large")
 def open_trash():
@@ -384,14 +407,14 @@ def open_trash():
         for note in trash_notes:
             with st.expander(f"🗑 {note['titolo']}"):
                 if note.get("tipo") == "disegno" and note.get("file_data"):
-                    if len(note["file_data"]) > 100:
-                        # --- FIX IMMAGINE TRASH ---
+                    # FIX IMAGE 0 BUG
+                    if len(note["file_data"]) > 0:
                         try:
                             img_stream = io.BytesIO(note["file_data"])
                             img = Image.open(img_stream)
                             st.image(img)
                         except:
-                            st.error("Image error")
+                            st.error("Image Error")
                 else:
                     safe_content = process_content_for_display(note['contenuto'])
                     st.markdown(f"<div class='quill-read-content'>{safe_content}</div>", unsafe_allow_html=True)
@@ -428,11 +451,10 @@ with head_col3:
 st.markdown("---") 
 
 # --- CREATE NOTE ---
-expander_state = st.session_state.create_expanded
-
-with st.expander("Create New Note", expanded=expander_state):
+expander_label = f"Create New Note{'\u200b' * st.session_state.reset_counter}"
+with st.expander(expander_label, expanded=False):
     
-    note_type = st.radio("Type:", ["Text", "Drawing"], horizontal=True, on_change=toggle_create_expander)
+    note_type = st.radio("Type:", ["Text", "Drawing"], horizontal=True)
     
     if note_type == "Text":
         with st.form("create_note_form", clear_on_submit=True):
@@ -461,9 +483,8 @@ with st.expander("Create New Note", expanded=expander_state):
                     }
                     collection.insert_one(doc)
                     st.toast("Saved!", icon="✅")
-                    
                     st.session_state.create_key = str(uuid.uuid4())
-                    st.session_state.create_expanded = False
+                    st.session_state.reset_counter += 1
                     st.rerun()
                 else:
                     st.warning("Title and content required.")
@@ -473,8 +494,8 @@ with st.expander("Create New Note", expanded=expander_state):
         labels_input = st.text_input("Labels", key=f"draw_labels_{st.session_state.create_key}")
         
         c_w, c_h = st.columns(2)
-        canv_width = c_w.slider("Width (px)", 200, 1000, 600, key=f"cw_{st.session_state.create_key}")
-        canv_height = c_h.slider("Height (px)", 200, 1000, 400, key=f"ch_{st.session_state.create_key}")
+        canv_width = c_w.number_input("Width (px)", 300, 2000, 600, key=f"cw_{st.session_state.create_key}")
+        canv_height = c_h.number_input("Height (px)", 300, 2000, 400, key=f"ch_{st.session_state.create_key}")
 
         c_col, c_tool, c_width = st.columns([1, 2, 1])
         with c_col:
@@ -483,7 +504,7 @@ with st.expander("Create New Note", expanded=expander_state):
         with c_tool:
             tool = st.radio("Tool", ["Pen", "Pencil", "Highlighter", "Eraser"], horizontal=True, key=f"dt_{st.session_state.create_key}")
         with c_width:
-            stroke_width = st.slider("Stroke thickness", 1, 30, 2, key=f"dw_{st.session_state.create_key}")
+            stroke_width = st.slider("Width", 1, 30, 2, key=f"dw_{st.session_state.create_key}")
         
         if tool == "Eraser": base_color = "#ffffff"
         
@@ -520,9 +541,9 @@ with st.expander("Create New Note", expanded=expander_state):
                 img = Image.fromarray(canvas_result.image_data.astype('uint8'), 'RGBA')
                 buf = io.BytesIO()
                 img.save(buf, format='PNG')
-                val_bytes = buf.getvalue() 
+                val_bytes = buf.getvalue()
                 
-                if len(val_bytes) > 100: 
+                if len(val_bytes) > 0: # FIX IMAGE 0
                     doc = {
                         "titolo": title_input,
                         "contenuto": "Drawing",
@@ -538,12 +559,12 @@ with st.expander("Create New Note", expanded=expander_state):
                     collection.insert_one(doc)
                     st.toast("Saved!", icon="✅")
                     st.session_state.create_key = str(uuid.uuid4())
-                    st.session_state.create_expanded = False
+                    st.session_state.reset_counter += 1
                     st.rerun()
                 else:
-                    st.error("Error: Drawing data is empty or invalid. Please draw something.")
+                    st.error("Error drawing data.")
             else:
-                st.warning("Please verify title and drawing.")
+                st.warning("Draw something and title it.")
 
 st.write("")
 query = st.text_input("🔍", placeholder="Search...", label_visibility="collapsed")
@@ -588,17 +609,11 @@ def render_notes_grid(note_list):
                     st.write("")
                 
                 if note.get("tipo") == "disegno" and note.get("file_data"):
-                    if len(note["file_data"]) > 100:
-                        # --- FIX IMMAGINE: USARE PIL IMAGE.OPEN ---
-                        try:
-                            # Convertiamo i bytes in uno stream
-                            img_stream = io.BytesIO(note["file_data"])
-                            # Apriamo l'immagine con PIL
-                            img = Image.open(img_stream)
-                            # Mostriamo l'immagine PIL (molto più sicuro che passare i raw bytes)
-                            st.image(img)
-                        except Exception:
-                            st.error("Errore caricamento disegno")
+                    # FIX PREVIEW (Use PIL)
+                    if len(note["file_data"]) > 0:
+                        img_stream = io.BytesIO(note["file_data"])
+                        img = Image.open(img_stream)
+                        st.image(img)
                 else:
                     safe_content = process_content_for_display(note['contenuto'])
                     st.markdown(f"<div class='quill-read-content'>{safe_content}</div>", unsafe_allow_html=True)
@@ -618,8 +633,8 @@ def render_notes_grid(note_list):
                 
                 label_pin = "⚲"
                 if c_pin.button(label_pin, key=f"pin_{note['_id']}", help="Pin"):
-                      collection.update_one({"_id": note['_id']}, {"$set": {"pinned": not is_pinned}})
-                      st.rerun()
+                     collection.update_one({"_id": note['_id']}, {"$set": {"pinned": not is_pinned}})
+                     st.rerun()
 
                 if c_move.button("⇄", key=f"mv_{note['_id']}", help="Move"):
                     open_move_popup(note['_id'])

@@ -2,6 +2,10 @@ import streamlit as st
 import pymongo
 from datetime import datetime, timedelta
 from streamlit_quill import st_quill
+from streamlit_drawable_canvas import st_canvas # LIBRERIA DISEGNO
+from PIL import Image # PER GESTIRE IMMAGINI
+import io
+import numpy as np
 import time
 import uuid
 import bson.binary
@@ -113,10 +117,7 @@ st.markdown(f"""
         margin-top: 30vh;
     }}
     
-    div[data-testid="column"] {{
-        display: flex;
-        align-items: center;
-    }}
+    div[data-testid="column"] {{ display: flex; align-items: center; }}
     
     /* PINNED HEADER */
     .pinned-header {{
@@ -179,41 +180,20 @@ def convert_notes_to_json(note_list):
     return json.dumps(export_list, indent=4)
 
 def process_content_for_display(html_content):
-    """
-    Funzione potente per pulire l'HTML per la visualizzazione:
-    1. Rende i link cliccabili (nuova scheda)
-    2. TRASFORMA LE LISTE CHECKBOX IN DIV (Rimuove i pallini)
-    """
     if not html_content: return ""
-    
-    # 1. FIX LINKS
     html_content = re.sub(r'<a href="(.*?)"', r'<a href="\1" target="_blank" style="color: #1E90FF !important; text-decoration: underline !important; cursor: pointer;" rel="noopener noreferrer"', html_content)
-    
-    # 2. FIX CHECKBOXES (STRUCTURE REPLACEMENT)
-    # Rimuove lo span inutile di Quill
     html_content = html_content.replace('<span class="ql-ui" contenteditable="false"></span>', '')
-    
-    # Sostituisce <li> con <div> per evitare i pallini automatici del browser
-    
-    # Unchecked: Simbolo Unicode &#9744; (Quadrato vuoto minimale)
     html_content = re.sub(
         r'<li data-list="unchecked">(.*?)</li>', 
         r'<div style="display: flex; align-items: flex-start; margin-bottom: 4px; margin-left: 5px;"><span style="margin-right: 10px; font-size: 1.2em; color: #555; line-height: 1.2;">&#9744;</span><span>\1</span></div>', 
-        html_content,
-        flags=re.DOTALL
+        html_content, flags=re.DOTALL
     )
-    
-    # Checked: Simbolo Unicode &#9745; (Quadrato con spunta minimale)
     html_content = re.sub(
         r'<li data-list="checked">(.*?)</li>', 
         r'<div style="display: flex; align-items: flex-start; margin-bottom: 4px; margin-left: 5px; color: #888; text-decoration: line-through;"><span style="margin-right: 10px; font-size: 1.2em; color: #333; text-decoration: none; line-height: 1.2;">&#9745;</span><span>\1</span></div>', 
-        html_content,
-        flags=re.DOTALL
+        html_content, flags=re.DOTALL
     )
-    
-    # Rimuove i tag <ul> residui che potrebbero creare spazi vuoti
     html_content = html_content.replace('<ul>', '').replace('</ul>', '')
-    
     return html_content
 
 def render_badges(labels_list):
@@ -227,7 +207,7 @@ def render_badges(labels_list):
 toolbar_config = [
     ['bold', 'italic', 'underline', 'strike'],
     [{ 'header': [1, 2, 3, False] }],
-    [{ 'list': 'ordered'}, { 'list': 'bullet'}, { 'list': 'check' }], # CHECKLIST
+    [{ 'list': 'ordered'}, { 'list': 'bullet'}, { 'list': 'check' }], 
     [{ 'script': 'sub'}, { 'script': 'super' }], 
     [{ 'color': [] }, { 'background': [] }],
     [{ 'font': [] }],
@@ -392,38 +372,100 @@ st.markdown("---")
 # --- CREATE NOTE ---
 expander_label = f"Create New Note{'\u200b' * st.session_state.reset_counter}"
 with st.expander(expander_label, expanded=False):
-    with st.form("create_note_form", clear_on_submit=True):
-        title_input = st.text_input("Title")
-        labels_input = st.text_input("Labels (comma separated)", placeholder="Important, Work...")
-        content_input = st_quill(placeholder="Write here...", html=True, toolbar=toolbar_config, key=f"quill_create_{st.session_state.create_key}")
-        uploaded_file = st.file_uploader("Attachment", type=['pdf', 'docx', 'txt', 'mp3', 'wav', 'jpg', 'png'])
-        submitted_create = st.form_submit_button("Save Note")
+    
+    # NOTE TYPE SELECTOR
+    note_type = st.radio("Note Type:", ["📝 Text", "🎨 Drawing"], horizontal=True)
+    
+    if note_type == "📝 Text":
+        with st.form("create_note_form", clear_on_submit=True):
+            title_input = st.text_input("Title")
+            labels_input = st.text_input("Labels (comma separated)", placeholder="Important, Work...")
+            
+            content_input = st_quill(
+                placeholder="Write here...", html=True, 
+                toolbar=toolbar_config, 
+                key=f"quill_create_{st.session_state.create_key}"
+            )
+            
+            uploaded_file = st.file_uploader("Attachment", type=['pdf', 'docx', 'txt', 'mp3', 'wav', 'jpg', 'png'])
+            submitted_create = st.form_submit_button("Save Note")
+            
+            if submitted_create:
+                if title_input and content_input:
+                    labels_list = [tag.strip() for tag in labels_input.split(",") if tag.strip()]
+                    last_note = collection.find_one(sort=[("custom_order", -1)])
+                    new_order = (last_note["custom_order"] + 1) if last_note and "custom_order" in last_note else 0
+                    
+                    doc = {
+                        "titolo": title_input,
+                        "contenuto": content_input,
+                        "labels": labels_list,
+                        "data": datetime.now(),
+                        "custom_order": new_order,
+                        "tipo": "testo_ricco",
+                        "deleted": False, "pinned": False,
+                        "file_name": uploaded_file.name if uploaded_file else None,
+                        "file_data": bson.binary.Binary(uploaded_file.getvalue()) if uploaded_file else None
+                    }
+                    collection.insert_one(doc)
+                    st.toast("Saved!", icon="✅")
+                    st.session_state.create_key = str(uuid.uuid4())
+                    st.session_state.reset_counter += 1
+                    st.rerun()
+                else:
+                    st.warning("Title and content required.")
+    
+    else: # DRAWING MODE
+        title_input = st.text_input("Drawing Title", key="draw_title")
+        labels_input = st.text_input("Labels", key="draw_labels")
         
-        if submitted_create:
-            if title_input and content_input:
+        c_col, c_width, c_undo = st.columns([1, 1, 1])
+        with c_col:
+            stroke_color = st.color_picker("Stroke color", "#000000")
+        with c_width:
+            stroke_width = st.slider("Stroke width", 1, 25, 3)
+        
+        # CANVAS
+        canvas_result = st_canvas(
+            fill_color="rgba(255, 165, 0, 0.3)",  # Fixed fill color with some opacity
+            stroke_width=stroke_width,
+            stroke_color=stroke_color,
+            background_color="#FFFFFF",
+            update_streamlit=True,
+            height=350,
+            drawing_mode="freedraw",
+            key="canvas",
+        )
+        
+        if st.button("Save Drawing"):
+            if title_input and canvas_result.image_data is not None:
                 labels_list = [tag.strip() for tag in labels_input.split(",") if tag.strip()]
-                
                 last_note = collection.find_one(sort=[("custom_order", -1)])
                 new_order = (last_note["custom_order"] + 1) if last_note and "custom_order" in last_note else 0
                 
+                # Convert numpy array (RGBA) to PNG Bytes
+                img = Image.fromarray(canvas_result.image_data.astype('uint8'), 'RGBA')
+                buf = io.BytesIO()
+                img.save(buf, format='PNG')
+                byte_im = buf.getvalue()
+                
                 doc = {
                     "titolo": title_input,
-                    "contenuto": content_input,
+                    "contenuto": "<i>(Handwritten Note)</i>", # Placeholder text
                     "labels": labels_list,
                     "data": datetime.now(),
-                    "custom_order": new_order, 
-                    "tipo": "testo_ricco",
+                    "custom_order": new_order,
+                    "tipo": "disegno",
                     "deleted": False, "pinned": False,
-                    "file_name": uploaded_file.name if uploaded_file else None,
-                    "file_data": bson.binary.Binary(uploaded_file.getvalue()) if uploaded_file else None
+                    "file_name": "drawing.png", # Force filename
+                    "file_data": bson.binary.Binary(byte_im)
                 }
                 collection.insert_one(doc)
                 st.toast("Saved!", icon="✅")
-                st.session_state.create_key = str(uuid.uuid4())
                 st.session_state.reset_counter += 1
                 st.rerun()
             else:
-                st.warning("Title and content required.")
+                st.warning("Draw something and give it a title.")
 
 st.write("")
 query = st.text_input("🔍", placeholder="Search...", label_visibility="collapsed")
@@ -454,7 +496,10 @@ def render_notes_grid(note_list):
     
     for index, note in enumerate(note_list):
         with cols[index % num_cols]: 
+            # ICONS
             icon_clip = "🖇️ " if note.get("file_name") else ""
+            if note.get("tipo") == "disegno": icon_clip = "🎨 " # Special icon for drawings
+            
             labels = note.get("labels", [])
             icon_label = "🏷️ " if labels else ""
             is_pinned = note.get("pinned", False)
@@ -467,20 +512,35 @@ def render_notes_grid(note_list):
                     st.markdown(render_badges(labels), unsafe_allow_html=True)
                     st.write("")
                 
-                safe_content = process_content_for_display(note['contenuto'])
-                st.markdown(f"<div class='quill-read-content'>{safe_content}</div>", unsafe_allow_html=True)
+                # CONTENT (Text or Drawing)
+                if note.get("tipo") == "disegno" and note.get("file_data"):
+                    st.image(note["file_data"])
+                else:
+                    safe_content = process_content_for_display(note['contenuto'])
+                    st.markdown(f"<div class='quill-read-content'>{safe_content}</div>", unsafe_allow_html=True)
                 
+                # Attachment (If any, or if it's a drawing)
                 if note.get("file_name"):
                     st.markdown("---")
-                    st.caption(f"Attachment: {note['file_name']}")
-                    st.download_button("Download File", data=note["file_data"], file_name=note["file_name"])
+                    # If it's NOT a drawing note but has a file, show preview
+                    if note.get("tipo") != "disegno":
+                        fname = note["file_name"].lower()
+                        if fname.endswith(('.png', '.jpg', '.jpeg')):
+                            st.image(note["file_data"])
+                    
+                    st.caption(f"File: {note['file_name']}")
+                    st.download_button("Download", data=note["file_data"], file_name=note["file_name"])
                 
                 st.markdown("---")
                 
                 c_mod, c_pin, c_move, c_del = st.columns(4)
                 
-                if c_mod.button("✎", key=f"mod_{note['_id']}", help="Edit"):
-                    open_edit_popup(note['_id'], note['titolo'], note['contenuto'], note.get("file_name"), labels)
+                # Edit (Only for text notes for now, complex to edit drawing)
+                if note.get("tipo") != "disegno":
+                    if c_mod.button("✎", key=f"mod_{note['_id']}", help="Edit"):
+                        open_edit_popup(note['_id'], note['titolo'], note['contenuto'], note.get("file_name"), labels)
+                else:
+                    st.write("") # Spacer for drawing notes (no edit yet)
                 
                 label_pin = "⚲"
                 help_text = "Unpin" if is_pinned else "Pin"

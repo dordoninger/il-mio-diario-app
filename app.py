@@ -124,37 +124,26 @@ st.markdown(f"""
     
     div[data-testid="column"] {{ display: flex; align-items: center; }}
     
-    /* CALENDAR DAY ROW */
-    .cal-row {{
-        padding: 15px;
-        border: 1px solid #eee;
-        border-radius: 8px;
+    /* PINNED HEADER */
+    .pinned-header {{
+        font-family: 'Helvetica Neue', 'Helvetica', 'Arial', sans-serif;
+        font-weight: 300;
+        font-size: 1.1rem;
+        color: #000;
+        margin-top: 20px;
         margin-bottom: 10px;
-        background-color: white;
-        transition: 0.2s;
-        cursor: pointer;
-    }}
-    .cal-row:hover {{
-        border-color: #000;
-        background-color: #fafafa;
-    }}
-    .cal-date {{
-        font-size: 1.5rem;
-        font-weight: bold;
-        color: #333;
-    }}
-    .cal-day {{
-        color: #888;
-        font-size: 0.9rem;
-        text-transform: uppercase;
+        border-bottom: 1px solid #eee;
+        padding-bottom: 5px;
         letter-spacing: 1px;
     }}
     
-    /* TABS STYLE OVERRIDE */
-    button[data-baseweb="tab"] {{
-        font-size: 1.2rem;
-        font-weight: 400;
-    }}
+    /* CALENDAR DAY NOTE (NO EXPANDER) */
+    .cal-note-container {
+        padding: 10px;
+        margin-bottom: 15px;
+        border-left: 3px solid #333;
+        background-color: #fafafa;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -260,13 +249,18 @@ def open_settings():
         res = collection.delete_many({"deleted": True, "data": {"$lt": limit}})
         if res.deleted_count > 0: st.success(f"Cleaned {res.deleted_count} items.")
 
-# --- COMMON FUNCTIONS (USED BY DASHBOARD AND CALENDAR) ---
-
-def logic_save_note(title, labels_str, content, file, note_type, drawing_res, date_ref=None):
-    if (note_type == "Text" and title and content) or (note_type == "Drawing" and title and drawing_res.image_data is not None):
+# --- SAVE LOGIC ---
+def logic_save_note(title, labels_str, content, file, note_type, drawing_res, date_ref=None, is_recur=False, end_year=None):
+    # LOOSE VALIDATION: Allow save if ANY field has content
+    has_content = False
+    if title and title.strip(): has_content = True
+    if content and content.strip(): has_content = True
+    if file: has_content = True
+    if drawing_res and drawing_res.image_data is not None: has_content = True
+    
+    if has_content:
         labels_list = [tag.strip() for tag in labels_str.split(",") if tag.strip()]
         
-        # Order logic (Only relevant for Dashboard, but we set it anyway)
         last_note = collection.find_one(sort=[("custom_order", -1)])
         new_order = (last_note["custom_order"] + 1) if last_note and "custom_order" in last_note else 0
         
@@ -277,8 +271,18 @@ def logic_save_note(title, labels_str, content, file, note_type, drawing_res, da
             "custom_order": new_order,
             "tipo": "testo_ricco" if note_type == "Text" else "disegno",
             "deleted": False, "pinned": False,
-            "calendar_date": date_ref # THIS IS THE KEY (Null for Dashboard, "YYYY-MM-DD" for Calendar)
+            "calendar_date": date_ref
         }
+        
+        # RECURRENCE LOGIC
+        if date_ref and is_recur:
+            doc["recurrence"] = "yearly"
+            # Extract month/day for easy querying
+            dt_obj = datetime.strptime(date_ref, "%Y-%m-%d")
+            doc["cal_month"] = dt_obj.month
+            doc["cal_day"] = dt_obj.day
+            if end_year:
+                doc["recur_end_year"] = end_year
 
         if note_type == "Text":
             doc["contenuto"] = content
@@ -302,10 +306,21 @@ def logic_save_note(title, labels_str, content, file, note_type, drawing_res, da
     return False
 
 def render_create_note_form(key_suffix, date_ref=None):
-    # If date_ref is present, we are in Calendar Mode
+    # RECURRENCE INPUTS (Only for Calendar)
+    recur_val = False
+    stop_year_val = None
     
-    note_type = st.radio("Type:", ["Text", "Drawing"], horizontal=True, key=f"nt_{key_suffix}")
-    
+    if date_ref:
+        col_type, col_recur = st.columns([2, 1])
+        with col_type:
+            note_type = st.radio("Type:", ["Text", "Drawing"], horizontal=True, key=f"nt_{key_suffix}")
+        with col_recur:
+            recur_val = st.checkbox("Repeat every year (Annual)", key=f"rec_{key_suffix}")
+            if recur_val:
+                stop_year_val = st.number_input("Stop after year (Optional)", min_value=2025, max_value=2124, value=None, key=f"sy_{key_suffix}")
+    else:
+        note_type = st.radio("Type:", ["Text", "Drawing"], horizontal=True, key=f"nt_{key_suffix}")
+
     if note_type == "Text":
         with st.form(f"form_{key_suffix}", clear_on_submit=True):
             title = st.text_input("Title")
@@ -313,21 +328,21 @@ def render_create_note_form(key_suffix, date_ref=None):
             content = st_quill(placeholder="Write here...", html=True, toolbar=toolbar_config)
             f_up = st.file_uploader("Attachment", type=['pdf', 'docx', 'txt', 'mp3', 'wav', 'jpg', 'png'])
             if st.form_submit_button("Save Note"):
-                if logic_save_note(title, labels, content, f_up, "Text", None, date_ref):
+                if logic_save_note(title, labels, content, f_up, "Text", None, date_ref, recur_val, stop_year_val):
                     st.toast("Saved!", icon="✅")
-                    if not date_ref: # Dashboard logic
+                    if not date_ref:
                         st.session_state.create_key = str(uuid.uuid4())
                         st.session_state.reset_counter += 1
                     st.rerun()
                 else:
-                    st.warning("Missing info")
+                    st.warning("Write something (Title or Content)")
     else:
         title = st.text_input("Title", key=f"dt_{key_suffix}")
         labels = st.text_input("Labels", key=f"dl_{key_suffix}")
         
         c_w, c_h = st.columns(2)
-        cw = c_w.number_input("Width", 300, 2000, 600, key=f"cw_{key_suffix}")
-        ch = c_h.number_input("Height", 300, 2000, 400, key=f"ch_{key_suffix}")
+        cw = c_w.number_input("Width (px)", 300, 2000, 600, key=f"cw_{key_suffix}")
+        ch = c_h.number_input("Height (px)", 300, 2000, 400, key=f"ch_{key_suffix}")
         
         c1, c2, c3 = st.columns([1, 2, 1])
         with c1:
@@ -348,7 +363,7 @@ def render_create_note_form(key_suffix, date_ref=None):
         res = st_canvas(fill_color="rgba(0,0,0,0)", stroke_width=sw, stroke_color=fc, background_color="#FFF", update_streamlit=True, height=ch, width=cw, drawing_mode="freedraw", key=ckey)
         
         if st.button("Save Drawing", key=f"bs_{key_suffix}"):
-            if logic_save_note(title, labels, None, None, "Drawing", res, date_ref):
+            if logic_save_note(title, labels, None, None, "Drawing", res, date_ref, recur_val, stop_year_val):
                 st.toast("Saved!", icon="✅")
                 if not date_ref:
                     st.session_state.create_key = str(uuid.uuid4())
@@ -422,7 +437,7 @@ def open_edit_popup(note_id, old_title, old_content, old_filename, old_labels, n
 @st.dialog("Move Note", width="large")
 def open_move_popup(current_note_id):
     st.write("Select the note you want to swap positions with:")
-    candidates = list(collection.find({"deleted": {"$ne": True}, "_id": {"$ne": current_note_id}, "calendar_date": None}).sort("custom_order", 1)) # Only Dashboard notes
+    candidates = list(collection.find({"deleted": {"$ne": True}, "_id": {"$ne": current_note_id}, "calendar_date": None}).sort("custom_order", 1)) # Only Dashboard
     if not candidates: st.warning("No notes available."); return
     options = {n["_id"]: f"{'📌' if n.get('pinned') else '📄'} {n['titolo']}" for n in candidates}
     selected_target_id = st.selectbox("Swap with:", options.keys(), format_func=lambda x: options[x])
@@ -470,50 +485,66 @@ def confirm_deletion(note_id):
 
 # --- CALENDAR DAY VIEW POPUP ---
 @st.dialog("Day View", width="large")
-def open_calendar_day(day_date_str): # Format YYYY-MM-DD
-    # Parse date for display
+def open_calendar_day(day_date_str):
     dt_obj = datetime.strptime(day_date_str, "%Y-%m-%d")
     nice_date = dt_obj.strftime("%A, %d %B %Y")
     
     st.markdown(f"## 📅 {nice_date}")
     
-    # 1. CREATE NOTE FOR THIS DAY
     with st.expander("➕ Add Note to this day"):
         render_create_note_form(f"cal_{day_date_str}", day_date_str)
         
     st.divider()
     
-    # 2. LIST NOTES FOR THIS DAY
-    day_notes = list(collection.find({"calendar_date": day_date_str, "deleted": {"$ne": True}}).sort("data", -1))
+    # FETCH REGULAR AND RECURRING NOTES
+    q_regular = {"calendar_date": day_date_str, "deleted": {"$ne": True}}
+    q_recur = {
+        "deleted": {"$ne": True},
+        "recurrence": "yearly",
+        "cal_month": dt_obj.month,
+        "cal_day": dt_obj.day,
+        "$or": [
+            {"recur_end_year": None},
+            {"recur_end_year": {"$gt": dt_obj.year}} # Only if current year < end year
+        ]
+    }
+    
+    # Combined fetch manually
+    notes_reg = list(collection.find(q_regular))
+    notes_rec = list(collection.find(q_recur))
+    day_notes = notes_reg + notes_rec
     
     if not day_notes:
         st.info("No notes for this day.")
     else:
         for note in day_notes:
-            icon_clip = "🖇️ " if note.get("file_name") else ""
-            if note.get("tipo") == "disegno": icon_clip = "🎨 "
-            labels = note.get("labels", [])
-            icon_label = "🏷️ " if labels else ""
+            # NO EXPANDER FOR CALENDAR - DIRECT VIEW
+            st.markdown(f"### {note['titolo']}")
             
-            with st.expander(f"{icon_label}{icon_clip}{note['titolo']}"):
-                if labels: st.markdown(render_badges(labels), unsafe_allow_html=True)
-                
-                if note.get("tipo") == "disegno" and note.get("file_data") and len(note["file_data"]) > 0:
-                    try: st.image(Image.open(io.BytesIO(note["file_data"])))
-                    except: pass
-                else:
-                    st.markdown(f"<div class='quill-read-content'>{process_content_for_display(note['contenuto'])}</div>", unsafe_allow_html=True)
-                
-                if note.get("file_name") and note.get("tipo") != "disegno":
-                    st.download_button("Download", data=note["file_data"], file_name=note["file_name"], key=f"dlc_{note['_id']}")
-                
-                c1, c2 = st.columns(2)
-                if c1.button("✎ Edit", key=f"ced_{note['_id']}"):
-                    draw_data = note.get("drawing_json", None)
-                    open_edit_popup(note['_id'], note['titolo'], note['contenuto'], note.get("file_name"), labels, note.get("tipo"), draw_data)
-                
-                if c2.button("🗑 Delete", key=f"cdel_{note['_id']}"):
-                    confirm_deletion(note['_id'])
+            labels = note.get("labels", [])
+            if labels: st.markdown(render_badges(labels), unsafe_allow_html=True)
+            
+            if note.get("recurrence") == "yearly":
+                st.caption("🔄 *Yearly Event*")
+
+            if note.get("tipo") == "disegno" and note.get("file_data") and len(note["file_data"]) > 0:
+                try: st.image(Image.open(io.BytesIO(note["file_data"])))
+                except: pass
+            else:
+                st.markdown(f"<div class='quill-read-content'>{process_content_for_display(note['contenuto'])}</div>", unsafe_allow_html=True)
+            
+            if note.get("file_name") and note.get("tipo") != "disegno":
+                st.download_button("Download", data=note["file_data"], file_name=note["file_name"], key=f"dlc_{note['_id']}")
+            
+            c1, c2 = st.columns(2)
+            if c1.button("✎ Edit", key=f"ced_{note['_id']}"):
+                draw_data = note.get("drawing_json", None)
+                open_edit_popup(note['_id'], note['titolo'], note['contenuto'], note.get("file_name"), labels, note.get("tipo"), draw_data)
+            
+            if c2.button("🗑 Delete", key=f"cdel_{note['_id']}"):
+                confirm_deletion(note['_id'])
+            
+            st.divider()
 
 # --- MAIN LAYOUT ---
 
@@ -528,20 +559,20 @@ with head_col3:
 
 st.markdown("---") 
 
-# --- TABS: DASHBOARD vs CALENDAR ---
-tab_dash, tab_cal = st.tabs(["📂 DASHBOARD", "📅 CALENDAR"])
+# --- TABS ---
+tab_dash, tab_cal = st.tabs(["DASHBOARD", "CALENDAR"])
 
 # ================= DASHBOARD TAB =================
 with tab_dash:
-    # CREATE NOTE (DASHBOARD ONLY)
+    # CREATE NOTE
     expander_label = f"Create New Note{'\u200b' * st.session_state.reset_counter}"
     with st.expander(expander_label, expanded=False):
-        render_create_note_form("dash_create") # No date_ref = Dashboard
+        render_create_note_form("dash_create") 
 
     st.write("")
     query = st.text_input("🔍", placeholder="Search Dashboard...", label_visibility="collapsed", key="dash_search")
 
-    filter_query = {"deleted": {"$ne": True}, "calendar_date": None} # Only Dashboard notes
+    filter_query = {"deleted": {"$ne": True}, "calendar_date": None} # Only Dashboard
     if query:
         filter_query["$and"] = [
             {"deleted": {"$ne": True}},
@@ -607,7 +638,6 @@ with tab_dash:
 
 # ================= CALENDAR TAB =================
 with tab_cal:
-    # Navigation
     c_prev, c_sel_m, c_sel_y, c_next = st.columns([1, 2, 2, 1])
     
     with c_prev:
@@ -643,57 +673,55 @@ with tab_cal:
             st.session_state.cal_year = sel_year
             st.rerun()
 
-    # Calculate Days
     num_days = calendar.monthrange(st.session_state.cal_year, st.session_state.cal_month)[1]
     
-    # Query ALL notes for this month to optimize performance (1 query vs 30)
+    # QUERY MONTH NOTES + RECURRING
     start_date_str = f"{st.session_state.cal_year}-{st.session_state.cal_month:02d}-01"
     end_date_str = f"{st.session_state.cal_year}-{st.session_state.cal_month:02d}-{num_days}"
     
-    month_notes = list(collection.find({
+    # 1. Standard Notes
+    month_notes_reg = list(collection.find({
         "calendar_date": {"$gte": start_date_str, "$lte": end_date_str},
         "deleted": {"$ne": True}
     }))
     
-    # Organize notes by day
+    # 2. Recurring Notes
+    month_notes_rec = list(collection.find({
+        "recurrence": "yearly",
+        "cal_month": st.session_state.cal_month,
+        "deleted": {"$ne": True},
+        "$or": [
+            {"recur_end_year": None},
+            {"recur_end_year": {"$gt": st.session_state.cal_year}}
+        ]
+    }))
+    
+    all_cal_notes = month_notes_reg + month_notes_rec
+    
     notes_by_day = {}
-    for n in month_notes:
-        d = n["calendar_date"]
+    for n in all_cal_notes:
+        if n.get("recurrence") == "yearly":
+            # For recurring, construct date for key
+            d = f"{st.session_state.cal_year}-{st.session_state.cal_month:02d}-{n['cal_day']:02d}"
+        else:
+            d = n["calendar_date"]
+            
         if d not in notes_by_day: notes_by_day[d] = []
         notes_by_day[d].append(n)
 
     st.write("---")
     
-    # VERTICAL LIST CALENDAR
     for day in range(1, num_days + 1):
         date_str = f"{st.session_state.cal_year}-{st.session_state.cal_month:02d}-{day:02d}"
         dt = date(st.session_state.cal_year, st.session_state.cal_month, day)
-        day_name = dt.strftime("%A")[:3] # Mon, Tue...
+        day_name = dt.strftime("%A")[:3] 
         
-        # Check notes
         notes_today = notes_by_day.get(date_str, [])
         count = len(notes_today)
         
-        # Visual style for the row
-        bg_col = "#ffffff"
-        border_col = "#eee"
-        info_text = "No notes"
-        if count > 0:
-            bg_col = "#f0f8ff" # Light blue highlight
-            border_col = "#b0c4de"
-            info_text = f"<b>{count} Notes</b>"
-            # Preview titles
-            titles = [n['titolo'] for n in notes_today[:3]]
-            if titles: info_text += f" <span style='color:#666; font-size:0.8em'>({', '.join(titles)}...)</span>"
-
-        # Clickable Row (simulated with button full width)
-        # Using a container with button inside to simulate the "Row"
-        # We construct HTML button label to look like a row
+        label_btn = f"{day:02d} {day_name}"
+        if count > 0: label_btn += f"  -  {'📄 '*count}"
+        else: label_btn += "  -  Empty"
         
-        btn_label = f"{day:02d} {day_name} | {info_text}"
-        
-        # Streamlit button doesn't support rich HTML well, so we use a clean format
-        # and rely on the popup to show details.
-        
-        if st.button(f"{day:02d} {day_name}  -  {'📄 '*count if count > 0 else 'Empty'}", key=f"cal_day_{day}", use_container_width=True):
+        if st.button(label_btn, key=f"cal_day_{day}", use_container_width=True):
             open_calendar_day(date_str)

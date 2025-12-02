@@ -26,6 +26,7 @@ if 'grid_cols' not in st.session_state: st.session_state.grid_cols = 4
 # --- 3. CSS AESTHETIC ---
 st.markdown(f"""
 <style>
+    /* TITLE STYLE */
     .dor-title {{
         font-family: 'Helvetica Neue', 'Helvetica', 'Arial', sans-serif;
         font-weight: 300;
@@ -37,6 +38,8 @@ st.markdown(f"""
         margin-top: 10px;
         margin-bottom: 0px;
     }}
+
+    /* EXPANDER STYLE */
     .streamlit-expander {{
         border-radius: 12px !important;
         border: 1px solid #e0e0e0 !important;
@@ -59,6 +62,8 @@ st.markdown(f"""
         padding-top: 10px;
         border-radius: 0 0 12px 12px;
     }}
+    
+    /* READ CONTENT STYLE */
     .quill-read-content {{
         font-size: {st.session_state.text_size} !important;
         font-family: 'Georgia', serif;
@@ -69,6 +74,8 @@ st.markdown(f"""
         text-decoration: underline !important;
         cursor: pointer !important;
     }}
+
+    /* BADGE STYLE */
     .dor-badge {{
         display: inline-block;
         background-color: #f0f0f0;
@@ -84,11 +91,15 @@ st.markdown(f"""
         letter-spacing: 0.5px;
         text-transform: uppercase;
     }}
+
+    /* BLACK BORDER FIX */
     div[data-baseweb="input"] {{ border-color: #e0e0e0 !important; border-radius: 8px !important; }}
     div[data-baseweb="input"]:focus-within {{ border: 1px solid #333333 !important; box-shadow: none !important; }}
     div[data-baseweb="textarea"] {{ border-color: #e0e0e0 !important; border-radius: 8px !important; }}
     div[data-baseweb="textarea"]:focus-within {{ border: 1px solid #333333 !important; box-shadow: none !important; }}
     input:focus {{ outline: none !important; }}
+
+    /* ANIMATION */
     @keyframes fade-in {{
         0% {{ opacity: 0; letter-spacing: 0px; }}
         100% {{ opacity: 1; letter-spacing: 8px; }}
@@ -103,7 +114,10 @@ st.markdown(f"""
         animation: fade-in 2.0s ease-out;
         margin-top: 30vh;
     }}
+    
     div[data-testid="column"] {{ display: flex; align-items: center; }}
+    
+    /* PINNED HEADER */
     .pinned-header {{
         font-family: 'Helvetica Neue', 'Helvetica', 'Arial', sans-serif;
         font-weight: 300;
@@ -159,7 +173,7 @@ def convert_notes_to_json(note_list):
         nota_export['_id'] = str(nota['_id'])
         nota_export['data'] = nota['data'].strftime("%Y-%m-%d %H:%M:%S")
         if 'file_data' in nota_export: del nota_export['file_data']
-        if 'drawing_json' in nota_export: del nota_export['drawing_json'] # Exclude heavy vector data
+        if 'drawing_json' in nota_export: del nota_export['drawing_json']
         export_list.append(nota_export)
     return json.dumps(export_list, indent=4)
 
@@ -229,33 +243,29 @@ def open_edit_popup(note_id, old_title, old_content, old_filename, old_labels, n
         new_title = st.text_input("Title", value=old_title)
         new_labels_str = st.text_input("Labels", value=labels_str)
         
-        # --- EDIT LOGIC SPLIT BY TYPE ---
-        new_content = old_content # Default
-        new_drawing_json = drawing_data # Default
-        new_image_bytes = None
+        new_content = old_content
         
         if note_type == "disegno":
-            # DRAWING TOOLS
-            t_col, w_col = st.columns([2, 1])
+            # --- DRAWING TOOLS (EDIT MODE) ---
+            t_col, w_col = st.columns([3, 1])
             with t_col:
-                tool = st.radio("Tool", ["🖊️ Pen", "🖍️ Highlighter", "🧼 Eraser"], horizontal=True)
+                tool = st.radio("Tool", ["🖊️ Pen", "✏️ Pencil", "🖌️ Marker", "🧽 Eraser"], horizontal=True, key=f"d_t_{note_id}")
             with w_col:
-                stroke_width = st.slider("Width", 1, 30, 3)
+                stroke_width = st.slider("Width", 1, 30, 3, key=f"d_w_{note_id}")
             
-            # Determine Color/Opacity based on Tool
-            base_color = st.color_picker("Color", "#000000") if tool != "🧼 Eraser" else "#ffffff"
+            # Color logic
+            base_color = st.color_picker("Color", "#000000", key=f"d_c_{note_id}") if "Eraser" not in tool else "#ffffff"
             
             final_color = base_color
-            if tool == "🖍️ Highlighter":
-                final_color = hex_to_rgba(base_color, 0.3)
-                if stroke_width < 10: stroke_width = 15 # Default thicker for highlighter
-            if tool == "🧼 Eraser":
-                if stroke_width < 10: stroke_width = 20 # Default thicker for eraser
+            if tool == "✏️ Pencil":
+                final_color = hex_to_rgba(base_color, 0.7) # Slightly transparent
+                if stroke_width > 5: stroke_width = 2 # Force thin
+            elif tool == "🖌️ Marker":
+                final_color = hex_to_rgba(base_color, 0.4) # Transparent marker
+                if stroke_width < 10: stroke_width = 15
+            elif "Eraser" in tool:
+                if stroke_width < 10: stroke_width = 20
 
-            # Initial Drawing Logic:
-            # If we have JSON (vector data), use it (Fully Editable).
-            # If not (old notes), create empty canvas (Image will be in background if loaded properly, 
-            # but st_canvas handles background separately. For simplicity, we start fresh or overlay).
             init_draw = json.loads(drawing_data) if drawing_data else None
             
             canvas_result = st_canvas(
@@ -265,7 +275,7 @@ def open_edit_popup(note_id, old_title, old_content, old_filename, old_labels, n
                 background_color="#FFFFFF",
                 initial_drawing=init_draw,
                 update_streamlit=True,
-                height=400,
+                height=450,
                 drawing_mode="freedraw",
                 key=f"canvas_edit_{note_id}",
             )
@@ -275,11 +285,10 @@ def open_edit_popup(note_id, old_title, old_content, old_filename, old_labels, n
             new_content = st_quill(value=old_content, toolbar=toolbar_config, html=True, key=unique_key)
         
         st.divider()
+        new_file = None
         if note_type != "disegno":
             st.markdown("### Attachments")
             new_file = st.file_uploader("Replace File", type=['pdf', 'docx', 'txt', 'mp3', 'wav', 'jpg', 'png'])
-        else:
-            new_file = None # Drawing replaces file logic
 
         submitted = st.form_submit_button("Save Changes", type="primary")
         
@@ -293,9 +302,7 @@ def open_edit_popup(note_id, old_title, old_content, old_filename, old_labels, n
             
             if note_type == "disegno":
                 if canvas_result.image_data is not None:
-                    # Save Vector Data
                     update_data["drawing_json"] = json.dumps(canvas_result.json_data)
-                    # Save Rendered Image
                     img = Image.fromarray(canvas_result.image_data.astype('uint8'), 'RGBA')
                     buf = io.BytesIO()
                     img.save(buf, format='PNG')
@@ -440,20 +447,30 @@ with st.expander(expander_label, expanded=False):
         title_input = st.text_input("Title", key="draw_title")
         labels_input = st.text_input("Labels", key="draw_labels")
         
-        # DRAWING TOOLS
-        c1, c2 = st.columns([2, 1])
+        # --- NEW DRAWING TOOLS ---
+        # Canvas Size Inputs
+        c_w, c_h = st.columns(2)
+        canv_width = c_w.number_input("Canvas Width (px)", 300, 1500, 600)
+        canv_height = c_h.number_input("Canvas Height (px)", 300, 1500, 400)
+
+        # Tools Selector
+        c1, c2 = st.columns([3, 1])
         with c1:
-            tool = st.radio("Tool", ["🖊️ Pen", "🖍️ Highlighter", "🧼 Eraser"], horizontal=True, key="draw_tool")
+            tool = st.radio("Tool", ["🖊️ Pen", "✏️ Pencil", "🖌️ Marker", "🧽 Eraser"], horizontal=True)
         with c2:
-            stroke_width = st.slider("Width", 1, 30, 3, key="draw_width")
+            stroke_width = st.slider("Width", 1, 30, 3)
         
-        base_color = st.color_picker("Color", "#000000", key="draw_color") if tool != "🧼 Eraser" else "#ffffff"
+        # Logic for Tools (Color & Opacity)
+        base_color = st.color_picker("Color", "#000000") if "Eraser" not in tool else "#ffffff"
         
         final_color = base_color
-        if tool == "🖍️ Highlighter":
-            final_color = hex_to_rgba(base_color, 0.3)
-            if stroke_width < 10: stroke_width = 15
-        if tool == "🧼 Eraser":
+        if tool == "✏️ Pencil":
+            final_color = hex_to_rgba(base_color, 0.7) # Pencil is semi-transparent
+            if stroke_width > 5: stroke_width = 2 # Force pencil thinness
+        elif tool == "🖌️ Marker":
+            final_color = hex_to_rgba(base_color, 0.4) # Highlighter transparent
+            if stroke_width < 10: stroke_width = 15 # Force marker thickness
+        elif "Eraser" in tool:
             if stroke_width < 10: stroke_width = 20
 
         canvas_result = st_canvas(
@@ -462,7 +479,8 @@ with st.expander(expander_label, expanded=False):
             stroke_color=final_color,
             background_color="#FFFFFF",
             update_streamlit=True,
-            height=400,
+            height=canv_height, # DYNAMIC HEIGHT
+            width=canv_width,   # DYNAMIC WIDTH
             drawing_mode="freedraw",
             key="canvas_create",
         )
@@ -487,10 +505,12 @@ with st.expander(expander_label, expanded=False):
                     "deleted": False, "pinned": False,
                     "file_name": "drawing.png",
                     "file_data": bson.binary.Binary(buf.getvalue()),
-                    "drawing_json": json.dumps(canvas_result.json_data) # SAVE VECTOR DATA
+                    "drawing_json": json.dumps(canvas_result.json_data) # SAVE VECTORS
                 }
                 collection.insert_one(doc)
                 st.toast("Saved!", icon="✅")
+                
+                # RESET TRICK ALSO FOR DRAWING
                 st.session_state.reset_counter += 1
                 st.rerun()
             else:
@@ -530,6 +550,7 @@ def render_notes_grid(note_list):
             icon_label = "🏷️ " if labels else ""
             is_pinned = note.get("pinned", False)
             icon_pin = "" 
+            
             full_title = f"{icon_pin}{icon_label}{icon_clip}{note['titolo']}"
             
             with st.expander(full_title):
@@ -537,7 +558,6 @@ def render_notes_grid(note_list):
                     st.markdown(render_badges(labels), unsafe_allow_html=True)
                     st.write("")
                 
-                # CONTENT
                 if note.get("tipo") == "disegno" and note.get("file_data"):
                     st.image(note["file_data"])
                 else:
@@ -554,7 +574,6 @@ def render_notes_grid(note_list):
                 c_mod, c_pin, c_move, c_del = st.columns(4)
                 
                 if c_mod.button("✎", key=f"mod_{note['_id']}", help="Edit"):
-                    # Pass JSON data if it exists
                     draw_data = note.get("drawing_json", None)
                     open_edit_popup(note['_id'], note['titolo'], note['contenuto'], note.get("file_name"), labels, note.get("tipo"), draw_data)
                 

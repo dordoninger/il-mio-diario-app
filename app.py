@@ -15,7 +15,7 @@ st.set_page_config(page_title="DOR NOTES", page_icon="📄", layout="wide")
 if 'text_size' not in st.session_state: st.session_state.text_size = "16px"
 if 'edit_trigger' not in st.session_state: st.session_state.edit_trigger = 0
 
-# --- 3. CSS AESTHETIC (AGGRESSIVE BLACK BORDER FIX) ---
+# --- 3. CSS AESTHETIC (VERSION 18 RESTORED - BLACK BORDERS) ---
 st.markdown(f"""
 <style>
     /* TITLE STYLE */
@@ -52,29 +52,32 @@ st.markdown(f"""
         font-family: 'Georgia', serif;
         line-height: 1.6;
     }}
-    /* Make links visible and clickable in read mode */
+    
+    /* LINK STYLE IN READ MODE (Blue & Underlined) */
     .quill-read-content a {{
         color: #1E90FF !important;
         text-decoration: underline !important;
         cursor: pointer !important;
     }}
 
-    /* --- FINAL FIX FOR RED BORDERS --- */
-    /* We target the specific container Streamlit uses for focus rings */
-    
-    /* Text Input Focus */
-    div[data-testid="stTextInput"] > div > div:focus-within {{
+    /* --- BLACK BORDER FIX (RESTORED FROM V18) --- */
+    /* Forces black border on Focus for Inputs */
+    .stTextInput > div > div {{
+        border-color: #e0e0e0;
+    }}
+    .stTextInput > div > div:focus-within {{
         border-color: #000000 !important;
         box-shadow: 0 0 0 1px #000000 !important;
     }}
-    
-    /* Text Area Focus */
-    div[data-testid="stTextArea"] > div > div:focus-within {{
+    /* Text Area */
+    .stTextArea > div > div {{
+        border-color: #e0e0e0;
+    }}
+    .stTextArea > div > div:focus-within {{
         border-color: #000000 !important;
         box-shadow: 0 0 0 1px #000000 !important;
     }}
-    
-    /* General Input Focus Override */
+    /* Standard Input override */
     input:focus {{
         border-color: #000000 !important;
         outline: none !important;
@@ -140,7 +143,8 @@ def convert_notes_to_json(note_list):
 
 def sanitize_links(html_content):
     if not html_content: return ""
-    # Regex to inject target="_blank" so links open in new tab
+    # Replaces normal links with links that open in a NEW TAB (target="_blank")
+    # This makes them clickable without closing the app.
     return re.sub(r'<a href="(.*?)"', r'<a href="\1" target="_blank" rel="noopener noreferrer"', html_content)
 
 # --- 6. TOOLBAR CONFIG ---
@@ -180,31 +184,28 @@ def open_settings():
 def open_edit_popup(note_id, old_title, old_content, old_filename):
     st.markdown("### Edit Content")
     
-    # --- CRITICAL FIX: USING st.form ---
-    # Placing the editor inside a FORM prevents Streamlit from 
-    # re-running the script while you interact with the editor.
-    # This solves the "Link disappears" and "Formula Crash" issues.
-    
+    # FORM to prevent reload issues
     with st.form(key=f"edit_form_{note_id}"):
         new_title = st.text_input("Title", value=old_title)
         
-        # We use a unique key to ensure fresh load
-        unique_key = f"quill_edit_{note_id}_{st.session_state.edit_trigger}"
+        # --- SAFE MODE TOGGLE (Fix for Formula Crash) ---
+        st.markdown("---")
+        use_safe_mode = st.checkbox("⚠️ Safe Mode (Check this if editing a Formula crashes)", value=False)
         
-        new_content = st_quill(
-            value=old_content, 
-            toolbar=toolbar_config, 
-            html=True, 
-            key=unique_key
-        )
+        if use_safe_mode:
+            # TEXT AREA: Cannot crash. Shows raw HTML/Text.
+            # You can delete the formula text here safely.
+            new_content = st.text_area("Raw Content (Safe Edit)", value=old_content, height=300)
+        else:
+            # QUILL: Visual editor (May crash with complex formulas)
+            unique_key = f"quill_edit_{note_id}_{st.session_state.edit_trigger}"
+            new_content = st_quill(value=old_content, toolbar=toolbar_config, html=True, key=unique_key)
         
         st.divider()
         st.markdown("### Attachments")
         
-        # File management inside form
         new_file = st.file_uploader("Replace File (Optional)", type=['pdf', 'docx', 'txt', 'mp3', 'wav', 'jpg', 'png'])
         
-        # Form Submit Button
         submitted = st.form_submit_button("Save Changes", type="primary")
         
         if submitted:
@@ -216,12 +217,12 @@ def open_edit_popup(note_id, old_title, old_content, old_filename):
             if new_file:
                 update_data["file_name"] = new_file.name
                 update_data["file_data"] = bson.binary.Binary(new_file.getvalue())
-                
+            
             collection.update_one({"_id": note_id}, {"$set": update_data})
-            st.session_state.edit_trigger += 1 # Force refresh key for next time
+            st.session_state.edit_trigger += 1 
             st.rerun()
 
-    # Option to remove file outside form (since it's a separate action)
+    # Remove file button (outside form)
     if old_filename:
         st.info(f"Current file: **{old_filename}**")
         if st.button("Remove current file", key=f"rm_file_{note_id}"):
@@ -273,7 +274,6 @@ with head_col3:
 st.markdown("---") 
 
 with st.expander("Create New Note"):
-    # Using FORM here too to prevent glitches during creation
     with st.form("create_note_form", clear_on_submit=True):
         title_input = st.text_input("Title")
         
@@ -324,6 +324,7 @@ else:
             icon_pin = "📌 " if is_pinned else ""
             
             with st.expander(f"{icon_pin}{icon_clip} {note['titolo']}"):
+                # Use sanitize_links to ensure clickability in read mode
                 safe_content = sanitize_links(note['contenuto'])
                 st.markdown(f"<div class='quill-read-content'>{safe_content}</div>", unsafe_allow_html=True)
                 

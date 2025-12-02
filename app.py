@@ -6,7 +6,7 @@ import time
 import uuid
 import bson.binary
 import json
-import re # Serve per rendere i link cliccabili
+import re
 
 # --- 1. PAGE CONFIGURATION ---
 st.set_page_config(page_title="DOR NOTES", page_icon="📄", layout="wide")
@@ -52,25 +52,21 @@ st.markdown(f"""
         line-height: 1.6;
     }}
     
-    /* LINKS IN READ MODE */
+    /* FORCE LINKS TO BE BLUE & UNDERLINED IN READ MODE */
     .quill-read-content a {{
-        color: #1E90FF;
-        text-decoration: underline;
+        color: #1E90FF !important;
+        text-decoration: underline !important;
+        pointer-events: auto !important;
     }}
 
-    /* --- INPUTS FOCUS FIX (BLACK BORDER instead of RED) --- */
-    /* Target Text Input fields */
-    div[data-baseweb="input"] {{
-        border-color: #e0e0e0;
+    /* INPUTS FOCUS (BLACK BORDER instead of RED) */
+    .stTextInput > div > div > input:focus {{
+        border-color: #000000 !important;
+        box-shadow: 0 0 0 1px #000000 !important;
     }}
     div[data-baseweb="input"]:focus-within {{
         border-color: #000000 !important;
         box-shadow: 0 0 0 1px #000000 !important;
-    }}
-    /* Also remove red focus from standard inputs */
-    input:focus {{
-        border-color: #000000 !important;
-        outline: none !important;
     }}
     
     /* ANIMATION (2 SECONDS) */
@@ -85,7 +81,7 @@ st.markdown(f"""
         color: black;
         text-align: center;
         text-transform: uppercase;
-        animation: fade-in 2.0s ease-out; /* 2.0 Seconds */
+        animation: fade-in 2.0s ease-out;
         margin-top: 30vh;
     }}
     
@@ -101,7 +97,7 @@ if 'first_load' not in st.session_state:
     placeholder = st.empty()
     with placeholder.container():
         st.markdown("<div class='splash-text'>DOR NOTES</div>", unsafe_allow_html=True)
-        time.sleep(2.0) # 2.0 Seconds
+        time.sleep(2.0)
     placeholder.empty()
     st.session_state['first_load'] = True
 
@@ -133,16 +129,17 @@ def convert_notes_to_json(note_list):
 
 def sanitize_links(html_content):
     """
-    Ensures all links in the HTML open in a new tab (target="_blank")
-    to make them clickable without killing the app session.
+    This function ensures that links in the READ view open in a new tab.
+    It does NOT affect the editing view.
     """
     if not html_content: return ""
-    # Regex to find <a href="..."> and insert target="_blank"
-    # This is a basic replacement, assumes standard Quill output.
-    html_content = re.sub(r'<a href="(.*?)"', r'<a href="\1" target="_blank"', html_content)
+    # Regex to inject target="_blank" into <a href="..."> tags if missing
+    # We use a simple regex that finds hrefs and ensures they are clickable
+    html_content = re.sub(r'<a href="(.*?)"', r'<a href="\1" target="_blank" rel="noopener noreferrer"', html_content)
     return html_content
 
 # --- 6. TOOLBAR CONFIG ---
+# Standard full toolbar
 toolbar_config = [
     ['bold', 'italic', 'underline', 'strike'],
     [{ 'header': [1, 2, 3, False] }],
@@ -152,7 +149,7 @@ toolbar_config = [
     [{ 'font': [] }],
     [{ 'align': [] }],
     ['image', 'formula'],
-    ['link'], # Ensure Link button is present
+    ['link'], # Link button explicitly enabled
 ]
 
 # --- 7. POPUPS (DIALOGS) ---
@@ -181,10 +178,13 @@ def open_edit_popup(note_id, old_title, old_content, old_filename):
     st.markdown("### Edit Content")
     new_title = st.text_input("Title", value=old_title)
     
-    # FIX FOR FORMULA CRASH: Generate a unique key every time edit opens
-    unique_edit_key = f"edit_{note_id}_{uuid.uuid4()}"
+    # CRITICAL FIX FOR FORMULAS: 
+    # We generate a completely new key using UUID every time the popup loads.
+    # This forces Streamlit/Quill to destroy the old editor component and build a fresh one,
+    # preventing the "undefined render" crash when loading complex HTML/Latex.
+    unique_key = f"edit_editor_{note_id}_{uuid.uuid4()}"
     
-    new_content = st_quill(value=old_content, toolbar=toolbar_config, html=True, key=unique_edit_key)
+    new_content = st_quill(value=old_content, toolbar=toolbar_config, html=True, key=unique_key)
     
     st.divider()
     st.markdown("### Manage Attachments")
@@ -257,6 +257,8 @@ st.markdown("---")
 
 with st.expander("Create New Note"):
     title_input = st.text_input("Title", key=f"tit_{st.session_state.editor_key}")
+    
+    # TRANSLATED PLACEHOLDER
     content_input = st_quill(
         placeholder="Write your thoughts here...",
         html=True,
@@ -303,7 +305,7 @@ else:
             icon_pin = "📌 " if is_pinned else ""
             
             with st.expander(f"{icon_pin}{icon_clip} {note['titolo']}"):
-                # Sanitize links to be clickable
+                # SANITIZE LINKS (Add target="_blank" only for reading)
                 safe_content = sanitize_links(note['contenuto'])
                 st.markdown(f"<div class='quill-read-content'>{safe_content}</div>", unsafe_allow_html=True)
                 

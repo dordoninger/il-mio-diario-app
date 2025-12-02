@@ -138,7 +138,7 @@ def apri_impostazioni():
     tutte_le_note = list(collection.find({}))
     json_dati = converti_note_per_json(tutte_le_note)
     st.download_button(
-        label="⬇️ Scarica Backup (.json)",
+        label="Scarica Backup (.json)",
         data=json_dati,
         file_name=f"backup_dornotes_{datetime.now().strftime('%Y%m%d')}.json",
         mime="application/json"
@@ -220,7 +220,7 @@ with head_col1:
     st.markdown("<div class='dor-title'>DOR NOTES</div>", unsafe_allow_html=True)
 
 with head_col2:
-    if st.button("⚙️", help="Impostazioni"):
+    if st.button("⚙️:gear:", help="Impostazioni"):
         apri_impostazioni()
 
 with head_col3:
@@ -284,7 +284,7 @@ else:
             icona_pin = "📌 " if is_pinned else ""
             
             # Tendina
-            with st.expander(f"{icona_pin}{icona_clip}📄 {nota['titolo']}"):
+            with st.expander(f"{icona_pin}{icona_clip} {nota['titolo']}"):
                 
                 # Contenuto
                 st.markdown(f"<div class='quill-read-content'>{nota['contenuto']}</div>", unsafe_allow_html=True)
@@ -293,7 +293,7 @@ else:
                 if nota.get("file_name"):
                     st.markdown("---")
                     st.caption(f"Allegato: {nota['file_name']}")
-                    st.download_button("⬇️ Scarica", data=nota["file_data"], file_name=nota["file_name"])
+                    st.download_button("Scarica", data=nota["file_data"], file_name=nota["file_name"])
                 
                 st.markdown("---")
                 

@@ -104,20 +104,29 @@ st.markdown(f"""
     div[data-baseweb="textarea"] {{ border-color: #e0e0e0 !important; border-radius: 8px !important; }}
     div[data-baseweb="textarea"]:focus-within {{ border: 1px solid #000000 !important; box-shadow: none !important; }}
     
-    /* SPECIFIC FIX FOR NUMBER INPUTS (Canvas Size) */
-    div[data-testid="stNumberInput"] div[data-baseweb="input"] {{
-        border-color: #e0e0e0 !important;
-        border-radius: 8px !important;
+    /* --- NUOVO STILE PER NUMBER INPUTS (Width/Height) --- */
+    
+    /* 1. Nasconde i pulsanti +/- */
+    div[data-testid="stNumberInput"] button {{
+        display: none !important;
     }}
+
+    /* 2. Stile base del contenitore numero */
+    div[data-testid="stNumberInput"] div[data-baseweb="input"] {{
+        border: 1px solid #e0e0e0 !important;
+        border-radius: 8px !important;
+        background-color: white !important;
+        padding-right: 0px !important;
+    }}
+
+    /* 3. Stile quando l'utente clicca (FOCUS) - NERO */
     div[data-testid="stNumberInput"] div[data-baseweb="input"]:focus-within {{
         border: 1px solid #000000 !important;
         box-shadow: none !important;
-    }}
-    div[data-testid="stNumberInput"] input:focus {{
         outline: none !important;
-        box-shadow: none !important;
     }}
 
+    /* Input generico focus */
     input:focus {{ outline: none !important; border-color: #000000 !important; }}
 
     /* ANIMATION */
@@ -278,7 +287,6 @@ def open_edit_popup(note_id, old_title, old_content, old_filename, old_labels, n
             with c_tool:
                 tool = st.radio("Tool", ["Pen", "Pencil", "Highlighter", "Eraser"], horizontal=True, key=f"d_t_{note_id}")
             with c_width:
-                # MODIFICA 2: Renamed Width to Stroke thickness
                 stroke_width = st.slider("Stroke thickness", 1, 30, 2, key=f"d_w_{note_id}")
             
             if tool == "Eraser": base_color = "#ffffff"
@@ -331,7 +339,6 @@ def open_edit_popup(note_id, old_title, old_content, old_filename, old_labels, n
                     img.save(buf, format='PNG')
                     val_bytes = buf.getvalue()
                     
-                    # MODIFICA 1: Check length > 100 to ensure valid PNG
                     if len(val_bytes) > 100:
                         update_data["file_data"] = bson.binary.Binary(val_bytes)
                         update_data["file_name"] = "drawing.png"
@@ -395,7 +402,6 @@ def open_trash():
         for note in trash_notes:
             with st.expander(f"🗑 {note['titolo']}"):
                 if note.get("tipo") == "disegno" and note.get("file_data"):
-                    # Check for valid image data in trash too
                     if len(note["file_data"]) > 100:
                         st.image(note["file_data"])
                 else:
@@ -434,13 +440,10 @@ with head_col3:
 st.markdown("---") 
 
 # --- CREATE NOTE ---
-# We track "create_expanded" in session state. 
-# If user changes Note Type (radio), we set it to True so it stays open.
 expander_state = st.session_state.create_expanded
 
 with st.expander("Create New Note", expanded=expander_state):
     
-    # Callback to keep expander open when interacting
     note_type = st.radio("Type:", ["Text", "Drawing"], horizontal=True, on_change=toggle_create_expander)
     
     if note_type == "Text":
@@ -472,7 +475,7 @@ with st.expander("Create New Note", expanded=expander_state):
                     st.toast("Saved!", icon="✅")
                     
                     st.session_state.create_key = str(uuid.uuid4())
-                    st.session_state.create_expanded = False # Close on save
+                    st.session_state.create_expanded = False
                     st.rerun()
                 else:
                     st.warning("Title and content required.")
@@ -482,7 +485,7 @@ with st.expander("Create New Note", expanded=expander_state):
         labels_input = st.text_input("Labels", key=f"draw_labels_{st.session_state.create_key}")
         
         c_w, c_h = st.columns(2)
-        # Note: These are 'stNumberInput' which we fixed in CSS to be black on focus
+        # These number inputs will now be styled without +/- buttons and with black focus border
         canv_width = c_w.number_input("Width (px)", 300, 2000, 600, key=f"cw_{st.session_state.create_key}")
         canv_height = c_h.number_input("Height (px)", 300, 2000, 400, key=f"ch_{st.session_state.create_key}")
 
@@ -493,7 +496,6 @@ with st.expander("Create New Note", expanded=expander_state):
         with c_tool:
             tool = st.radio("Tool", ["Pen", "Pencil", "Highlighter", "Eraser"], horizontal=True, key=f"dt_{st.session_state.create_key}")
         with c_width:
-            # MODIFICA 2: Renamed Width to Stroke thickness
             stroke_width = st.slider("Stroke thickness", 1, 30, 2, key=f"dw_{st.session_state.create_key}")
         
         if tool == "Eraser": base_color = "#ffffff"
@@ -531,9 +533,8 @@ with st.expander("Create New Note", expanded=expander_state):
                 img = Image.fromarray(canvas_result.image_data.astype('uint8'), 'RGBA')
                 buf = io.BytesIO()
                 img.save(buf, format='PNG')
-                val_bytes = buf.getvalue() # Get bytes
+                val_bytes = buf.getvalue() 
                 
-                # MODIFICA 1: Stronger check for valid image data (> 100 bytes)
                 if len(val_bytes) > 100: 
                     doc = {
                         "titolo": title_input,
@@ -550,7 +551,7 @@ with st.expander("Create New Note", expanded=expander_state):
                     collection.insert_one(doc)
                     st.toast("Saved!", icon="✅")
                     st.session_state.create_key = str(uuid.uuid4())
-                    st.session_state.create_expanded = False # Close on save
+                    st.session_state.create_expanded = False
                     st.rerun()
                 else:
                     st.error("Error: Drawing data is empty or invalid. Please draw something.")
@@ -600,8 +601,6 @@ def render_notes_grid(note_list):
                     st.write("")
                 
                 if note.get("tipo") == "disegno" and note.get("file_data"):
-                    # MODIFICA 1: Display check (avoid broken icon 0)
-                    # A valid PNG is almost certainly > 100 bytes.
                     if len(note["file_data"]) > 100:
                         st.image(note["file_data"], output_format="PNG")
                 else:

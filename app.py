@@ -14,11 +14,7 @@ st.set_page_config(page_title="DOR NOTES", page_icon="📄", layout="wide")
 # --- 2. STATE MANAGEMENT ---
 if 'text_size' not in st.session_state: st.session_state.text_size = "16px"
 if 'edit_trigger' not in st.session_state: st.session_state.edit_trigger = 0
-
-# COUNTER FOR EXPANDER RESET TRICK
 if 'reset_counter' not in st.session_state: st.session_state.reset_counter = 0
-
-# KEY FOR EDITOR RESET
 if 'create_key' not in st.session_state: st.session_state.create_key = str(uuid.uuid4())
 
 # --- 3. CSS AESTHETIC ---
@@ -59,14 +55,13 @@ st.markdown(f"""
         line-height: 1.6;
     }}
     
-    /* LINK STYLE IN READ MODE */
     .quill-read-content a {{
         color: #1E90FF !important;
         text-decoration: underline !important;
         cursor: pointer !important;
     }}
 
-    /* BADGE STYLE (LABELS INSIDE NOTE) */
+    /* BADGE STYLE */
     .dor-badge {{
         display: inline-block;
         background-color: #f0f0f0;
@@ -83,7 +78,7 @@ st.markdown(f"""
         text-transform: uppercase;
     }}
 
-    /* --- BLACK BORDER FIX --- */
+    /* BLACK BORDER FIX */
     div[data-baseweb="input"] {{ border-color: #e0e0e0 !important; border-radius: 5px !important; }}
     div[data-baseweb="input"]:focus-within {{ border: 1px solid #333333 !important; box-shadow: none !important; }}
     div[data-baseweb="textarea"] {{ border-color: #e0e0e0 !important; border-radius: 5px !important; }}
@@ -150,7 +145,64 @@ if client is None: st.stop()
 db = client.diario_db
 collection = db.note
 
-# --- 5. UTILS ---
+# --- 5. LOGICA DI ORDINAMENTO (MIGRATION) ---
+# Questa funzione controlla se le note hanno un campo "custom_order".
+# Se non ce l'hanno (note vecchie), glielo assegna basandosi sulla data.
+def ensure_custom_order():
+    # Conta note senza ordine
+    count_missing = collection.count_documents({"custom_order": {"$exists": False}})
+    if count_missing > 0:
+        # Prende tutte le note ordinate per data (le più vecchie prima)
+        all_notes = list(collection.find().sort("data", 1))
+        for index, note in enumerate(all_notes):
+            # Assegna un indice progressivo (0, 1, 2...)
+            collection.update_one({"_id": note["_id"]}, {"$set": {"custom_order": index}})
+
+ensure_custom_order()
+
+# Funzione per scambiare posto
+def swap_notes(note_id, direction):
+    # direction: -1 (sposta indietro/sinistra), +1 (sposta avanti/destra)
+    
+    # 1. Recupera la lista ordinata attuale
+    # Escludiamo le note cancellate e pinned (pinned stanno in un gruppo a parte)
+    current_note = collection.find_one({"_id": note_id})
+    is_pinned = current_note.get("pinned", False)
+    
+    # Filtro: lavoriamo solo nel gruppo di appartenenza (Pinned o Normali)
+    filter_group = {"deleted": {"$ne": True}, "pinned": is_pinned}
+    
+    # Lista ordinata per custom_order
+    sorted_group = list(collection.find(filter_group).sort("custom_order", 1))
+    
+    # Trova l'indice della nota corrente nella lista
+    current_index = -1
+    for idx, n in enumerate(sorted_group):
+        if n["_id"] == note_id:
+            current_index = idx
+            break
+    
+    if current_index == -1: return # Errore
+    
+    # Calcola indice di destinazione
+    target_index = current_index + direction
+    
+    # Controlla se lo scambio è possibile (non siamo ai bordi)
+    if 0 <= target_index < len(sorted_group):
+        note_neighbor = sorted_group[target_index]
+        
+        # Scambia i valori di custom_order nel DB
+        order_current = current_note["custom_order"]
+        order_neighbor = note_neighbor["custom_order"]
+        
+        # Per sicurezza, scambiamo i valori
+        collection.update_one({"_id": note_id}, {"$set": {"custom_order": order_neighbor}})
+        collection.update_one({"_id": note_neighbor["_id"]}, {"$set": {"custom_order": order_current}})
+        
+        # Reload rapido
+        st.rerun()
+
+# --- UTILS ---
 def convert_notes_to_json(note_list):
     export_list = []
     for nota in note_list:
@@ -172,7 +224,7 @@ def render_badges(labels_list):
         html += f"<span class='dor-badge'>{label}</span>"
     return html
 
-# --- 6. TOOLBAR CONFIG ---
+# --- TOOLBAR CONFIG ---
 toolbar_config = [
     ['bold', 'italic', 'underline', 'strike'],
     [{ 'header': [1, 2, 3, False] }],
@@ -185,7 +237,7 @@ toolbar_config = [
     ['link'],
 ]
 
-# --- 7. POPUPS (DIALOGS) ---
+# --- POPUPS ---
 
 @st.dialog("Settings")
 def open_settings():
@@ -209,13 +261,9 @@ def open_settings():
 @st.dialog("Edit Note", width="large")
 def open_edit_popup(note_id, old_title, old_content, old_filename, old_labels):
     st.markdown("### Edit Content")
-    
     labels_str = ", ".join(old_labels) if old_labels else ""
-    
     with st.form(key=f"edit_form_{note_id}"):
         new_title = st.text_input("Title", value=old_title)
-        
-        # LABELS
         new_labels_str = st.text_input("Labels (comma separated)", value=labels_str, placeholder="Important, Work...")
         
         unique_key = f"quill_edit_{note_id}_{st.session_state.edit_trigger}"
@@ -223,19 +271,17 @@ def open_edit_popup(note_id, old_title, old_content, old_filename, old_labels):
         
         st.divider()
         st.markdown("### Attachments")
-        
         new_file = st.file_uploader("Replace File (Optional)", type=['pdf', 'docx', 'txt', 'mp3', 'wav', 'jpg', 'png'])
         
         submitted = st.form_submit_button("Save Changes", type="primary")
         
         if submitted:
             labels_list = [tag.strip() for tag in new_labels_str.split(",") if tag.strip()]
-            
             update_data = {
                 "titolo": new_title, 
                 "contenuto": new_content, 
                 "labels": labels_list,
-                "data": datetime.now()
+                "data": datetime.now() # Modifying date does NOT change order anymore
             }
             if new_file:
                 update_data["file_name"] = new_file.name
@@ -287,9 +333,7 @@ def confirm_deletion(note_id):
 # --- MAIN LAYOUT ---
 
 head_col1, head_col2, head_col3 = st.columns([9.0, 0.5, 0.5])
-
-with head_col1: 
-    st.markdown("<div class='dor-title'>DOR NOTES</div>", unsafe_allow_html=True)
+with head_col1: st.markdown("<div class='dor-title'>DOR NOTES</div>", unsafe_allow_html=True)
 with head_col2: 
     st.markdown("<div style='height: 15px;'></div>", unsafe_allow_html=True)
     if st.button("⚙", help="Settings"): open_settings()
@@ -300,35 +344,29 @@ with head_col3:
 st.markdown("---") 
 
 # --- CREATE NOTE ---
-
 expander_label = f"Create New Note{'\u200b' * st.session_state.reset_counter}"
-
 with st.expander(expander_label, expanded=False):
     with st.form("create_note_form", clear_on_submit=True):
         title_input = st.text_input("Title")
-        
-        # LABELS
         labels_input = st.text_input("Labels (comma separated)", placeholder="Important, Work...")
-        
-        content_input = st_quill(
-            placeholder="Write your thoughts here...",
-            html=True,
-            toolbar=toolbar_config,
-            key=f"quill_create_{st.session_state.create_key}"
-        )
+        content_input = st_quill(placeholder="Write here...", html=True, toolbar=toolbar_config, key=f"quill_create_{st.session_state.create_key}")
         uploaded_file = st.file_uploader("Attachment", type=['pdf', 'docx', 'txt', 'mp3', 'wav', 'jpg', 'png'])
-        
         submitted_create = st.form_submit_button("Save Note")
         
         if submitted_create:
             if title_input and content_input:
                 labels_list = [tag.strip() for tag in labels_input.split(",") if tag.strip()]
                 
+                # Calcolo NUOVO ORDINE: (Massimo ordine attuale + 1)
+                last_note = collection.find_one(sort=[("custom_order", -1)])
+                new_order = (last_note["custom_order"] + 1) if last_note and "custom_order" in last_note else 0
+                
                 doc = {
                     "titolo": title_input,
                     "contenuto": content_input,
                     "labels": labels_list,
                     "data": datetime.now(),
+                    "custom_order": new_order, # NEW NOTES GO TO BOTTOM
                     "tipo": "testo_ricco",
                     "deleted": False, "pinned": False,
                     "file_name": uploaded_file.name if uploaded_file else None,
@@ -336,7 +374,6 @@ with st.expander(expander_label, expanded=False):
                 }
                 collection.insert_one(doc)
                 st.toast("Saved!", icon="✓")
-                
                 st.session_state.create_key = str(uuid.uuid4())
                 st.session_state.reset_counter += 1
                 st.rerun()
@@ -359,29 +396,25 @@ if query:
         ]
     }
 
-all_notes = list(collection.find(filter_query).sort("data", -1))
+# ORDER BY CUSTOM_ORDER (Fixed Position) instead of Date
+all_notes = list(collection.find(filter_query).sort("custom_order", 1)) 
+
 pinned_notes = [n for n in all_notes if n.get("pinned", False)]
 other_notes = [n for n in all_notes if not n.get("pinned", False)]
 
 def render_notes_grid(note_list):
     if not note_list: return
-    cols = st.columns(3)
+    # 4 COLUMNS LAYOUT
+    cols = st.columns(4)
     for index, note in enumerate(note_list):
-        with cols[index % 3]:
+        with cols[index % 4]: # Cycle through 0,1,2,3
             icon_clip = "🖇️" if note.get("file_name") else ""
             is_pinned = note.get("pinned", False)
             icon_pin = "" if is_pinned else ""
-            
-            # --- LABEL SUFFIX ---
-            # Shows generic **[LABELS]** if any label exists
             labels = note.get("labels", [])
-            labels_suffix = ""
-            if labels:
-                labels_suffix = " **[LABELS]**"
+            labels_suffix = " **[LABELS]**" if labels else ""
             
             with st.expander(f"{icon_pin}{icon_clip} {note['titolo']}{labels_suffix}"):
-                
-                # Show actual colored badges inside
                 if labels:
                     st.markdown(render_badges(labels), unsafe_allow_html=True)
                     st.write("")
@@ -390,19 +423,14 @@ def render_notes_grid(note_list):
                 st.markdown(f"<div class='quill-read-content'>{safe_content}</div>", unsafe_allow_html=True)
                 
                 if note.get("file_name"):
-                    fname = note["file_name"].lower()
-                    fdata = note["file_data"]
                     st.markdown("---")
                     st.caption(f"Attachment: {note['file_name']}")
-                    if fname.endswith(('.png', '.jpg', '.jpeg', '.gif')):
-                        st.image(fdata)
-                    elif fname.endswith(('.mp3', '.wav', '.ogg')):
-                        st.audio(fdata)
-                    st.download_button("Download File", data=fdata, file_name=note["file_name"])
+                    st.download_button("Download File", data=note["file_data"], file_name=note["file_name"])
                 
                 st.markdown("---")
-                c_mod, c_pin, c_del = st.columns(3)
                 
+                # ROW 1: ACTIONS
+                c_mod, c_pin, c_del = st.columns(3)
                 if c_mod.button("✎ Edit", key=f"mod_{note['_id']}"):
                     open_edit_popup(note['_id'], note['titolo'], note['contenuto'], note.get("file_name"), labels)
                 
@@ -413,6 +441,15 @@ def render_notes_grid(note_list):
 
                 if c_del.button("🗑 Delete", key=f"del_{note['_id']}"):
                     confirm_deletion(note['_id'])
+                
+                # ROW 2: REORDERING
+                st.write("")
+                c_left, c_space, c_right = st.columns([1, 2, 1])
+                if c_left.button("⬅️", key=f"mv_l_{note['_id']}", help="Move Back"):
+                    swap_notes(note['_id'], -1)
+                
+                if c_right.button("➡️", key=f"mv_r_{note['_id']}", help="Move Forward"):
+                    swap_notes(note['_id'], 1)
 
 if not all_notes:
     st.info("No notes found.")

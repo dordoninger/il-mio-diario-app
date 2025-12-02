@@ -22,6 +22,7 @@ if 'create_key' not in st.session_state: st.session_state.create_key = str(uuid.
 
 # States for Calendar
 if 'cal_edit_id' not in st.session_state: st.session_state.cal_edit_id = None
+if 'cal_copy_id' not in st.session_state: st.session_state.cal_copy_id = None # NEW: Track copy state
 if 'cal_create_date' not in st.session_state: st.session_state.cal_create_date = None
 if 'cal_year' not in st.session_state: st.session_state.cal_year = datetime.now().year
 if 'cal_month' not in st.session_state: st.session_state.cal_month = datetime.now().month
@@ -410,6 +411,7 @@ def open_edit_popup(note_id, old_title, old_content, old_filename, old_labels, n
             init_draw = json.loads(drawing_data) if drawing_data else None
             canvas_result = st_canvas(fill_color="rgba(0,0,0,0)", stroke_width=stroke_width, stroke_color=final_color, background_color="#FFFFFF", initial_drawing=init_draw, update_streamlit=True, height=450, drawing_mode="freedraw", key=f"canvas_edit_{note_id}")
         else:
+            # UNIQUE KEY FOR EDIT FORM TO PREVENT CRASHES
             unique_key = f"quill_edit_{note_id}_{st.session_state.edit_trigger}"
             new_content = st_quill(value=old_content, toolbar=toolbar_config, html=True, key=unique_key)
             st.divider()
@@ -514,6 +516,133 @@ def confirm_deletion(note_id):
     if c1.button("Yes", type="primary"): collection.update_one({"_id": note_id}, {"$set": {"deleted": True}}); st.rerun()
     if c2.button("Cancel"): st.rerun()
 
+# --- CALENDAR DAY VIEW POPUP ---
+@st.dialog("Day View", width="large")
+def open_calendar_day(day_date_str):
+    dt_obj = datetime.strptime(day_date_str, "%Y-%m-%d")
+    nice_date = dt_obj.strftime("%A, %d %B %Y")
+    
+    st.markdown(f"## 📅 {nice_date}")
+    
+    # EDIT MODE CHECK
+    edit_id = st.session_state.get('cal_edit_id')
+    copy_id = st.session_state.get('cal_copy_id')
+    
+    if edit_id:
+        # [EDIT MODE INLINE]
+        note_to_edit = collection.find_one({"_id": edit_id})
+        if note_to_edit:
+            st.warning(f"Editing: {note_to_edit.get('titolo', 'Untitled')}")
+            with st.form(key=f"cal_edit_form_{edit_id}"):
+                new_title = st.text_input("Title", value=note_to_edit.get('titolo', ''))
+                curr_date = datetime.strptime(note_to_edit['calendar_date'], "%Y-%m-%d").date()
+                new_date = st.date_input("Date (Move)", value=curr_date)
+                new_content = note_to_edit.get('contenuto', '')
+                note_type = note_to_edit.get('tipo', 'testo_ricco')
+                
+                if note_type == "disegno":
+                    st.info("Drawings: Use global edit (pencil icon) for full edit. Here you can only move/rename.")
+                    if note_to_edit.get("file_data"):
+                         try: st.image(Image.open(io.BytesIO(note_to_edit["file_data"])))
+                         except: pass
+                else:
+                    # Use unique key to prevent formula crashes
+                    unique_key = f"cal_quill_{edit_id}_{st.session_state.edit_trigger}"
+                    new_content = st_quill(value=new_content, toolbar=toolbar_config, html=True, key=unique_key)
+                
+                c_save, c_cancel = st.columns(2)
+                if c_save.form_submit_button("Save Changes"):
+                    upd = {"titolo": new_title, "calendar_date": str(new_date)}
+                    if note_type != "disegno": upd["contenuto"] = new_content
+                    collection.update_one({"_id": edit_id}, {"$set": upd})
+                    st.session_state.cal_edit_id = None
+                    st.session_state.edit_trigger += 1
+                    st.rerun()
+                if c_cancel.form_submit_button("Cancel"):
+                    st.session_state.cal_edit_id = None
+                    st.rerun()
+        else:
+            st.session_state.cal_edit_id = None
+            st.rerun()
+
+    else:
+        # NORMAL VIEW
+        with st.expander("➕ Add Note to this day"):
+            render_create_note_form(f"cal_{day_date_str}", day_date_str)
+            
+        st.divider()
+        
+        q_reg = {"calendar_date": day_date_str, "deleted": {"$ne": True}}
+        q_rec = {"deleted": {"$ne": True}, "recurrence": "yearly", "cal_month": dt_obj.month, "cal_day": dt_obj.day, "$or": [{"recur_end_year": None}, {"recur_end_year": {"$gt": dt_obj.year}}]}
+        
+        day_notes = list(collection.find(q_reg)) + list(collection.find(q_rec))
+        
+        if not day_notes:
+            st.info("No notes.")
+        else:
+            for note in day_notes:
+                with st.container():
+                    st.markdown(f"<div class='cal-note-container'>", unsafe_allow_html=True)
+                    
+                    title_txt = note.get('titolo') if note.get('titolo') else ""
+                    icon_art = "🎨 " if note.get('tipo') == "disegno" else ""
+                    extra_icons = ""
+                    if note.get("labels"): extra_icons += "🏷️ "
+                    if note.get("file_name") and note.get("tipo") != "disegno": extra_icons += "🖇️ "
+                    
+                    st.markdown(f"**{extra_icons}{icon_art}{title_txt}**")
+                    
+                    if note.get("labels"): st.markdown(render_badges(note["labels"]), unsafe_allow_html=True)
+                    if note.get("recurrence") == "yearly": st.caption("🔄 Annual")
+
+                    if note.get("tipo") == "disegno" and note.get("file_data") and len(note["file_data"]) > 0:
+                        try: st.image(Image.open(io.BytesIO(note["file_data"])))
+                        except: pass
+                    else:
+                        st.markdown(f"<div class='quill-read-content'>{process_content_for_display(note['contenuto'])}</div>", unsafe_allow_html=True)
+                    
+                    if note.get("file_name") and note.get("tipo") != "disegno":
+                        st.download_button("Download", data=note["file_data"], file_name=note["file_name"], key=f"dlc_{note['_id']}")
+                    
+                    # ACTION BUTTONS (Edit | Copy | Delete)
+                    c1, c2, c3 = st.columns(3)
+                    
+                    # 1. EDIT
+                    if c1.button("✎ Edit", key=f"ced_{note['_id']}"):
+                         # For complex edits (drawings/full screen), use Global Popup
+                         draw_data = note.get("drawing_json", None)
+                         open_edit_popup(note['_id'], note['titolo'], note['contenuto'], note.get("file_name"), note.get("labels", []), note.get("tipo"), draw_data, date_ref=day_date_str)
+                    
+                    # 2. COPY (NEW)
+                    if c2.button("❐ Copy", key=f"ccp_{note['_id']}"):
+                         st.session_state.cal_copy_id = note['_id']
+                         st.rerun()
+
+                    # 3. DELETE
+                    if not note.get('is_default'):
+                        if c3.button("🗑 Delete", key=f"cdel_{note['_id']}"):
+                            collection.update_one({"_id": note['_id']}, {"$set": {"deleted": True}})
+                            st.rerun()
+
+                    # COPY UI (Shows only for selected note)
+                    if st.session_state.cal_copy_id == note['_id']:
+                        with st.container():
+                            st.info("Select destination date:")
+                            col_d, col_b = st.columns([2, 1])
+                            copy_dest_date = col_d.date_input("Target", value=dt_obj, key=f"cdi_{note['_id']}")
+                            if col_b.button("Confirm Copy", key=f"cb_{note['_id']}"):
+                                new_doc = note.copy()
+                                del new_doc['_id'] # New ID
+                                new_doc['calendar_date'] = str(copy_dest_date)
+                                new_doc['data'] = datetime.now()
+                                collection.insert_one(new_doc)
+                                st.session_state.cal_copy_id = None
+                                st.success("Copied!")
+                                time.sleep(0.5)
+                                st.rerun()
+                    
+                    st.markdown("</div>", unsafe_allow_html=True)
+
 # --- MAIN LAYOUT ---
 
 head_col1, head_col2, head_col3 = st.columns([9.0, 0.5, 0.5])
@@ -532,7 +661,7 @@ tab_dash, tab_cal = st.tabs(["DASHBOARD", "CALENDAR"])
 
 # ================= DASHBOARD TAB =================
 with tab_dash:
-    expander_label = f"+ Create New Note{'\u200b' * st.session_state.reset_counter}"
+    expander_label = f"➕ Create New Note{'\u200b' * st.session_state.reset_counter}"
     with st.expander(expander_label, expanded=False):
         render_create_note_form("dash_create") 
 
@@ -682,11 +811,9 @@ with tab_cal:
     for day in range(1, num_days + 1):
         date_str = f"{st.session_state.cal_year}-{st.session_state.cal_month:02d}-{day:02d}"
         dt = date(st.session_state.cal_year, st.session_state.cal_month, day)
+        day_name = dt.strftime("%A, %d %B %Y") # FULL DATE FORMAT
         
-        # DAY HEADER FORMAT: Weekday, DD Month YYYY
-        day_display_str = dt.strftime("%A, %d %B %Y")
-        
-        # DEFAULT TASK CHECK
+        # DEFAULT NOTE CHECK
         has_default = False
         if date_str in notes_by_day:
             for n in notes_by_day[date_str]:
@@ -710,7 +837,7 @@ with tab_cal:
             if date_str not in notes_by_day: notes_by_day[date_str] = []
             notes_by_day[date_str].insert(0, def_doc)
 
-        st.markdown(f"#### {day_display_str}", unsafe_allow_html=True) 
+        st.markdown(f"#### {day_name}", unsafe_allow_html=True) 
         
         notes_today = notes_by_day.get(date_str, [])
         notes_today.sort(key=lambda x: x.get('custom_order', 0))
@@ -723,7 +850,6 @@ with tab_cal:
                     title_txt = note.get('titolo') if note.get('titolo') else ""
                     icon_art = "🎨 " if note.get('tipo') == "disegno" else ""
                     
-                    # ICONS (Only Label + Clip for non-drawing files)
                     extra_icons = ""
                     if note.get("labels"): extra_icons += "🏷️ "
                     if note.get("file_name") and note.get("tipo") != "disegno": extra_icons += "🖇️ "
@@ -742,15 +868,40 @@ with tab_cal:
                     if note.get("file_name") and note.get("tipo") != "disegno":
                         st.download_button("Download", data=note["file_data"], file_name=note["file_name"], key=f"dlc_{note['_id']}")
                     
-                    c1, c2 = st.columns(2)
+                    c1, c2, c3 = st.columns(3)
                     if c1.button("✎ Edit", key=f"ced_{note['_id']}"):
                         draw_data = note.get("drawing_json", None)
                         open_edit_popup(note['_id'], note['titolo'], note['contenuto'], note.get("file_name"), note.get("labels", []), note.get("tipo"), draw_data, date_ref=date_str)
                     
+                    if c2.button("❐ Copy", key=f"ccp_{note['_id']}"):
+                        st.session_state.cal_copy_id = note['_id']
+                        st.rerun()
+
                     if not note.get('is_default'):
-                        if c2.button("🗑 Delete", key=f"cdel_{note['_id']}"):
+                        if c3.button("🗑 Delete", key=f"cdel_{note['_id']}"):
                             confirm_deletion(note['_id'])
                     
+                    if st.session_state.cal_copy_id == note['_id']:
+                        with st.container():
+                            st.info("Select destination date:")
+                            col_d, col_b = st.columns([2, 1])
+                            copy_dest_date = col_d.date_input("Target", value=dt, key=f"cdi_{note['_id']}")
+                            if col_b.button("Confirm Copy", key=f"cb_{note['_id']}"):
+                                new_doc = note.copy()
+                                del new_doc['_id']
+                                new_doc['calendar_date'] = str(copy_dest_date)
+                                new_doc['data'] = datetime.now()
+                                # Default notes should not be copied as Default
+                                if new_doc.get('is_default'):
+                                    new_doc['is_default'] = False
+                                    new_doc['titolo'] = f"Copy of {new_doc['titolo']}"
+                                
+                                collection.insert_one(new_doc)
+                                st.session_state.cal_copy_id = None
+                                st.success("Copied!")
+                                time.sleep(0.5)
+                                st.rerun()
+
                     st.markdown("</div>", unsafe_allow_html=True)
         
         c_add, c_empty = st.columns([1, 4])
@@ -763,7 +914,7 @@ with tab_cal:
                     st.rerun()
         else:
             with c_add:
-                if st.button("+ Add Note", key=f"add_{date_str}"):
+                if st.button("➕ Add Note", key=f"add_{date_str}"):
                     st.session_state.cal_create_date = date_str
                     st.rerun()
         

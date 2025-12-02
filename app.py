@@ -249,21 +249,21 @@ def open_edit_popup(note_id, old_title, old_content, old_filename, old_labels, n
             # --- DRAWING TOOLS (EDIT MODE) ---
             t_col, w_col = st.columns([3, 1])
             with t_col:
-                tool = st.radio("Tool", ["🖊️ Pen", "✏️ Pencil", "🖌️ Marker", "🧽 Eraser"], horizontal=True, key=f"d_t_{note_id}")
+                tool = st.radio("Tool", ["Pen", "Pencil", "Highlighter", "Eraser"], horizontal=True, key=f"d_t_{note_id}")
             with w_col:
+                # Default Width = 3
                 stroke_width = st.slider("Width", 1, 30, 3, key=f"d_w_{note_id}")
             
-            # Color logic
-            base_color = st.color_picker("Color", "#000000", key=f"d_c_{note_id}") if "Eraser" not in tool else "#ffffff"
+            base_color = st.color_picker("Color", "#000000", key=f"d_c_{note_id}") if tool != "Eraser" else "#ffffff"
             
             final_color = base_color
-            if tool == "✏️ Pencil":
-                final_color = hex_to_rgba(base_color, 0.7) # Slightly transparent
-                if stroke_width > 5: stroke_width = 2 # Force thin
-            elif tool == "🖌️ Marker":
-                final_color = hex_to_rgba(base_color, 0.4) # Transparent marker
+            if tool == "Pencil":
+                final_color = hex_to_rgba(base_color, 0.7) 
+                if stroke_width > 5: stroke_width = 2
+            elif tool == "Highlighter":
+                final_color = hex_to_rgba(base_color, 0.4) 
                 if stroke_width < 10: stroke_width = 15
-            elif "Eraser" in tool:
+            elif tool == "Eraser":
                 if stroke_width < 10: stroke_width = 20
 
             init_draw = json.loads(drawing_data) if drawing_data else None
@@ -280,7 +280,6 @@ def open_edit_popup(note_id, old_title, old_content, old_filename, old_labels, n
                 key=f"canvas_edit_{note_id}",
             )
         else:
-            # TEXT TOOLS
             unique_key = f"quill_edit_{note_id}_{st.session_state.edit_trigger}"
             new_content = st_quill(value=old_content, toolbar=toolbar_config, html=True, key=unique_key)
         
@@ -450,39 +449,42 @@ with st.expander(expander_label, expanded=False):
         # --- NEW DRAWING TOOLS ---
         # Canvas Size Inputs
         c_w, c_h = st.columns(2)
-        canv_width = c_w.number_input("Canvas Width (px)", 300, 1500, 600)
-        canv_height = c_h.number_input("Canvas Height (px)", 300, 1500, 400)
+        canv_width = c_w.number_input("Canvas Width (px)", 300, 2000, 600)
+        canv_height = c_h.number_input("Canvas Height (px)", 300, 2000, 400)
 
         # Tools Selector
         c1, c2 = st.columns([3, 1])
         with c1:
-            tool = st.radio("Tool", ["🖊️ Pen", "✏️ Pencil", "🖌️ Marker", "🧽 Eraser"], horizontal=True)
+            tool = st.radio("Tool", ["Pen", "Pencil", "Highlighter", "Eraser"], horizontal=True)
         with c2:
             stroke_width = st.slider("Width", 1, 30, 3)
         
         # Logic for Tools (Color & Opacity)
-        base_color = st.color_picker("Color", "#000000") if "Eraser" not in tool else "#ffffff"
+        base_color = st.color_picker("Color", "#000000") if tool != "Eraser" else "#ffffff"
         
         final_color = base_color
-        if tool == "✏️ Pencil":
-            final_color = hex_to_rgba(base_color, 0.7) # Pencil is semi-transparent
-            if stroke_width > 5: stroke_width = 2 # Force pencil thinness
-        elif tool == "🖌️ Marker":
-            final_color = hex_to_rgba(base_color, 0.4) # Highlighter transparent
-            if stroke_width < 10: stroke_width = 15 # Force marker thickness
-        elif "Eraser" in tool:
+        if tool == "Pencil":
+            final_color = hex_to_rgba(base_color, 0.7) 
+            if stroke_width > 5: stroke_width = 2 
+        elif tool == "Highlighter":
+            final_color = hex_to_rgba(base_color, 0.4) 
+            if stroke_width < 10: stroke_width = 15 
+        elif tool == "Eraser":
             if stroke_width < 10: stroke_width = 20
 
+        # USE UNIQUE KEY FOR CANVAS TO FORCE RESET ON SIZE CHANGE/SAVE
+        canvas_key = f"canvas_create_{st.session_state.create_key}"
+        
         canvas_result = st_canvas(
             fill_color="rgba(0,0,0,0)",
             stroke_width=stroke_width,
             stroke_color=final_color,
             background_color="#FFFFFF",
             update_streamlit=True,
-            height=canv_height, # DYNAMIC HEIGHT
-            width=canv_width,   # DYNAMIC WIDTH
+            height=canv_height, 
+            width=canv_width,   
             drawing_mode="freedraw",
-            key="canvas_create",
+            key=canvas_key,
         )
         
         if st.button("Save Drawing"):
@@ -505,12 +507,13 @@ with st.expander(expander_label, expanded=False):
                     "deleted": False, "pinned": False,
                     "file_name": "drawing.png",
                     "file_data": bson.binary.Binary(buf.getvalue()),
-                    "drawing_json": json.dumps(canvas_result.json_data) # SAVE VECTORS
+                    "drawing_json": json.dumps(canvas_result.json_data) 
                 }
                 collection.insert_one(doc)
                 st.toast("Saved!", icon="✅")
                 
-                # RESET TRICK ALSO FOR DRAWING
+                # RESET EVERYTHING INCLUDING CANVAS KEY
+                st.session_state.create_key = str(uuid.uuid4())
                 st.session_state.reset_counter += 1
                 st.rerun()
             else:

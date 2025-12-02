@@ -104,36 +104,7 @@ st.markdown(f"""
     div[data-baseweb="textarea"] {{ border-color: #e0e0e0 !important; border-radius: 8px !important; }}
     div[data-baseweb="textarea"]:focus-within {{ border: 1px solid #000000 !important; box-shadow: none !important; }}
     
-    /* --- FIX AGGRESSIVO NUMBER INPUT (Width/Height) --- */
-    
-    /* 1. Nasconde i pulsanti +/- */
-    div[data-testid="stNumberInput"] button {{
-        display: none !important;
-    }}
-
-    /* 2. Stile del contenitore a riposo */
-    div[data-testid="stNumberInput"] div[data-baseweb="input"] {{
-        border: 1px solid #e0e0e0 !important;
-        border-radius: 8px !important;
-        background-color: white !important;
-        padding-right: 0px !important;
-    }}
-
-    /* 3. Stile del contenitore QUANDO CLICCATO (FOCUS) */
-    /* Qui rimuoviamo box-shadow (alone rosso) e forziamo il bordo nero */
-    div[data-testid="stNumberInput"] div[data-baseweb="input"]:focus-within {{
-        border: 1px solid #000000 !important;
-        box-shadow: none !important;
-        outline: none !important;
-    }}
-    
-    /* 4. Colore del cursore che lampeggia e del testo */
-    div[data-testid="stNumberInput"] input {{
-        caret-color: #000000 !important;
-        color: #000000 !important;
-    }}
-
-    /* 5. Input generici focus override (sicurezza extra) */
+    /* Input generici focus override */
     input:focus {{ 
         outline: none !important; 
         border-color: #000000 !important; 
@@ -495,10 +466,11 @@ with st.expander("Create New Note", expanded=expander_state):
         title_input = st.text_input("Title", key=f"draw_title_{st.session_state.create_key}")
         labels_input = st.text_input("Labels", key=f"draw_labels_{st.session_state.create_key}")
         
+        # --- QUI SONO STATI INSERITI I CURSORI ---
         c_w, c_h = st.columns(2)
-        # These number inputs will now be styled without +/- buttons and with black focus border
-        canv_width = c_w.number_input("Width (px)", 300, 2000, 600, key=f"cw_{st.session_state.create_key}")
-        canv_height = c_h.number_input("Height (px)", 300, 2000, 400, key=f"ch_{st.session_state.create_key}")
+        canv_width = c_w.slider("Width (px)", 200, 1000, 600, key=f"cw_{st.session_state.create_key}")
+        canv_height = c_h.slider("Height (px)", 200, 1000, 400, key=f"ch_{st.session_state.create_key}")
+        # ----------------------------------------
 
         c_col, c_tool, c_width = st.columns([1, 2, 1])
         with c_col:

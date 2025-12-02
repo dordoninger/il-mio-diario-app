@@ -294,14 +294,14 @@ def open_trash():
             st.rerun()
         st.divider()
         for note in trash_notes:
-            with st.expander(f"🗑️ {note['titolo']}"):
+            with st.expander(f"🗑 {note['titolo']}"):
                 safe_content = sanitize_links(note['contenuto'])
                 st.markdown(f"<div class='quill-read-content'>{safe_content}</div>", unsafe_allow_html=True)
                 c1, c2 = st.columns(2)
-                if c1.button("♻️ Restore", key=f"r_{note['_id']}"):
+                if c1.button("↺ Restore", key=f"r_{note['_id']}"):
                     collection.update_one({"_id": note['_id']}, {"$set": {"deleted": False}})
                     st.rerun()
-                if c2.button("❌ Delete", key=f"k_{note['_id']}"):
+                if c2.button("✕ Delete", key=f"k_{note['_id']}"):
                     collection.delete_one({"_id": note['_id']})
                     st.rerun()
     else:
@@ -324,10 +324,10 @@ with head_col1:
     st.markdown("<div class='dor-title'>DOR NOTES</div>", unsafe_allow_html=True)
 with head_col2: 
     st.markdown("<div style='height: 15px;'></div>", unsafe_allow_html=True)
-    if st.button("⚙️", help="Settings"): open_settings()
+    if st.button("⚙", help="Settings"): open_settings()
 with head_col3: 
     st.markdown("<div style='height: 15px;'></div>", unsafe_allow_html=True)
-    if st.button("🗑️", help="Trash"): open_trash()
+    if st.button("🗑", help="Trash"): open_trash()
 
 st.markdown("---") 
 
@@ -362,7 +362,7 @@ with st.expander(expander_label, expanded=False):
                     "file_data": bson.binary.Binary(uploaded_file.getvalue()) if uploaded_file else None
                 }
                 collection.insert_one(doc)
-                st.toast("Saved!", icon="✅")
+                st.toast("Saved!", icon="✓")
                 time.sleep(0.5)
                 
                 # AZIONI POST-SALVATAGGIO:
@@ -390,7 +390,7 @@ def render_notes_grid(note_list):
         with cols[index % 3]:
             icon_clip = "🖇️" if note.get("file_name") else ""
             is_pinned = note.get("pinned", False)
-            icon_pin = "📌 " if is_pinned else ""
+            icon_pin = "⚲ " if is_pinned else ""
             
             with st.expander(f"{icon_pin}{icon_clip} {note['titolo']}"):
                 safe_content = sanitize_links(note['contenuto'])
@@ -412,15 +412,15 @@ def render_notes_grid(note_list):
                 st.markdown("---")
                 c_mod, c_pin, c_del = st.columns(3)
                 
-                if c_mod.button("✏️ Edit", key=f"mod_{note['_id']}"):
+                if c_mod.button("✎ Edit", key=f"mod_{note['_id']}"):
                     open_edit_popup(note['_id'])
                 
-                label_pin = "📍 Unpin" if is_pinned else "📌 Pin"
+                label_pin = "Unpin" if is_pinned else "⚲ Pin"
                 if c_pin.button(label_pin, key=f"pin_{note['_id']}"):
                      collection.update_one({"_id": note['_id']}, {"$set": {"pinned": not is_pinned}})
                      st.rerun()
 
-                if c_del.button("🗑️ Delete", key=f"del_{note['_id']}"):
+                if c_del.button("🗑 Delete", key=f"del_{note['_id']}"):
                     confirm_deletion(note['_id'])
 
 if not all_notes:

@@ -153,7 +153,6 @@ st.markdown(f"""
     }}
     
     /* --- POPOVER MINIMALIST STYLE (The 3 dots) --- */
-    /* Target the button inside the popover container */
     [data-testid="stPopover"] > div > button {{
         border: none !important;
         background: transparent !important;
@@ -169,7 +168,6 @@ st.markdown(f"""
         box-shadow: none !important;
     }}
     
-    /* Hide the default dropdown arrow/caret that Streamlit adds */
     [data-testid="stPopover"] > div > button > div > span {{
         display: none !important;
     }}
@@ -187,7 +185,11 @@ st.markdown(f"""
         [data-testid="stHorizontalBlock"]:has(.dor-title) > div:nth-child(2),
         [data-testid="stHorizontalBlock"]:has(.dor-title) > div:nth-child(3) {{ flex: 0 0 auto !important; width: 40px !important; min-width: 40px !important; }}
 
-        .dor-title {{ font-size: 1.5rem !important; }}
+        /* 1) TITLE SLIGHTLY LARGER ON MOBILE (was 1.5, now 1.8) */
+        .dor-title {{ font-size: 1.8rem !important; }}
+
+        /* 1b) SECTION HEADERS SLIGHTLY SMALLER ON MOBILE (default is 1.4, now 1.1) */
+        .section-header {{ font-size: 1.1rem !important; }}
 
         /* Reset Columns */
         div[data-testid="column"] {{
@@ -381,17 +383,11 @@ def render_create_note_form(key_suffix, date_ref=None):
         with c_t: title = st.text_input("Title (Optional)", key=f"dt_{key_suffix}")
         with c_l: labels = st.text_input("Labels", key=f"dl_{key_suffix}")
         
-        c_w, c_h, c_preset = st.columns([2, 2, 1])
+        # 3) REMOVED PHONE PRESET BUTTON
+        c_w, c_h = st.columns(2)
         cw = c_w.slider("Width", 200, 1000, st.session_state.canvas_w, key=f"cw_{key_suffix}")
         ch = c_h.slider("Height", 200, 1000, st.session_state.canvas_h, key=f"ch_{key_suffix}")
-        with c_preset:
-            st.write("") 
-            st.write("") 
-            if st.button("📱 Phone", key=f"mb_{key_suffix}"):
-                st.session_state.canvas_w = 340
-                st.session_state.canvas_h = 500
-                st.rerun()
-
+        
         c1, c2, c3 = st.columns([1, 2, 1])
         with c1:
             st.markdown("<b>Set colour</b>", unsafe_allow_html=True)
@@ -584,7 +580,9 @@ def open_dash_move_popup(current_note_id):
             collection.update_one({"_id": current_note_id}, {"$set": {"custom_order": n2["custom_order"], "pinned": n2["pinned"]}})
             collection.update_one({"_id": selected_target_id}, {"$set": {"custom_order": n1["custom_order"], "pinned": n1["pinned"]}})
             st.rerun()
-        if c_insert.button("Insert Before ⬆", use_container_width=True):
+        
+        # 4) THIN VERTICAL ARROW
+        if c_insert.button("Insert Before ↑", use_container_width=True):
             n2 = collection.find_one({"_id": selected_target_id})
             t_order = n2["custom_order"]
             collection.update_one({"_id": current_note_id}, {"$set": {"custom_order": t_order, "pinned": n2["pinned"]}})
@@ -767,7 +765,8 @@ with tab_dash:
                                  collection.update_one({"_id": note['_id']}, {"$set": {"pinned": not note.get("pinned", False)}})
                                  st.rerun()
                             
-                            if st.button("Move / Copy ⇄", key=f"mv_{note['_id']}", use_container_width=True):
+                            # 2) RENAME BUTTON TO "Move ⇄"
+                            if st.button("Move ⇄", key=f"mv_{note['_id']}", use_container_width=True):
                                  open_dash_move_popup(note['_id'])
                             
                             if st.button("Delete 🗑", key=f"d_{note['_id']}", use_container_width=True):
@@ -922,7 +921,8 @@ with tab_cal:
                                 draw_data = note.get("drawing_json", None)
                                 open_edit_popup(note['_id'], note['titolo'], note['contenuto'], note.get("file_name"), note.get("labels", []), note.get("tipo"), draw_data, date_ref=date_str, is_default=note.get('is_default', False))
                             
-                            if st.button("Move / Copy ⇄", key=f"ccp_{note['_id']}", use_container_width=True):
+                            # 2) RENAME BUTTON TO "Move ⇄"
+                            if st.button("Move ⇄", key=f"ccp_{note['_id']}", use_container_width=True):
                                 open_cal_move_popup(note['_id'], date_str)
 
                             if st.button("Delete 🗑", key=f"cdel_{note['_id']}", use_container_width=True):

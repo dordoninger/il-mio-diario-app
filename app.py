@@ -32,10 +32,14 @@ if 'grid_cols' not in st.session_state: st.session_state.grid_cols = 4
 if 'auto_clean_enabled' not in st.session_state: st.session_state.auto_clean_enabled = True
 if 'reset_counter' not in st.session_state: st.session_state.reset_counter = 0
 
-# --- 3. CSS AESTHETIC ---
+# Canvas Defaults (Responsive logic support)
+if 'canvas_w' not in st.session_state: st.session_state.canvas_w = 600
+if 'canvas_h' not in st.session_state: st.session_state.canvas_h = 400
+
+# --- 3. CSS AESTHETIC (MOBILE OPTIMIZED) ---
 st.markdown(f"""
 <style>
-    /* MAIN TITLE STYLE */
+    /* GLOBAL FONTS & STYLES */
     .dor-title {{
         font-family: 'Helvetica Neue', 'Helvetica', 'Arial', sans-serif;
         font-weight: 300;
@@ -48,21 +52,20 @@ st.markdown(f"""
         margin-bottom: 0px;
     }}
 
-    /* SECTION HEADERS (RESTORED THIN FONT) */
     .section-header {{
         font-family: 'Helvetica Neue', 'Helvetica', 'Arial', sans-serif;
-        font-weight: 300; /* THIN 300 - RESTORED */
+        font-weight: 300;
         font-size: 1.4rem;
         color: #000;
         margin-top: 30px;
         margin-bottom: 15px;
-        border-bottom: 2px solid #888; /* Dark line */
+        border-bottom: 2px solid #888;
         padding-bottom: 8px;
-        letter-spacing: 2px; /* Spaced */
+        letter-spacing: 2px;
         text-transform: uppercase;
     }}
 
-    /* EXPANDER STYLE */
+    /* EXPANDER */
     .streamlit-expander {{
         border-radius: 12px !important;
         border: 1px solid #e0e0e0 !important;
@@ -86,7 +89,7 @@ st.markdown(f"""
         border-radius: 0 0 12px 12px;
     }}
     
-    /* READ CONTENT STYLE */
+    /* READ CONTENT */
     .quill-read-content {{
         font-size: {st.session_state.text_size} !important;
         font-family: 'Georgia', serif;
@@ -98,7 +101,7 @@ st.markdown(f"""
         cursor: pointer !important;
     }}
 
-    /* BADGE STYLE */
+    /* BADGE */
     .dor-badge {{
         display: inline-block;
         background-color: #f0f0f0;
@@ -115,21 +118,18 @@ st.markdown(f"""
         text-transform: uppercase;
     }}
 
-    /* BLACK BORDER FIX */
+    /* INPUTS BORDER FIX */
     div[data-baseweb="input"] {{ border-color: #e0e0e0 !important; border-radius: 8px !important; }}
     div[data-baseweb="input"]:focus-within {{ border: 1px solid #333333 !important; box-shadow: none !important; }}
     div[data-baseweb="textarea"] {{ border-color: #e0e0e0 !important; border-radius: 8px !important; }}
     div[data-baseweb="textarea"]:focus-within {{ border: 1px solid #333333 !important; box-shadow: none !important; }}
     div[data-testid="stNumberInput"] > div > div {{ border-color: #e0e0e0 !important; border-radius: 8px !important; }}
     div[data-testid="stNumberInput"] > div > div:focus-within {{ border: 1px solid #333333 !important; box-shadow: none !important; }}
-    
-    /* SELECTBOX FIX */
     div[data-baseweb="select"] > div {{ border-color: #e0e0e0 !important; border-radius: 8px !important; }}
     div[data-baseweb="select"] > div:focus-within {{ border-color: #000000 !important; box-shadow: 0 0 0 1px #000000 !important; }}
-    
     input:focus {{ outline: none !important; border-color: #000000 !important; }}
 
-    /* BUTTON COMPACT STYLE */
+    /* BUTTONS */
     .stButton button {{
         padding-top: 0.2rem !important;
         padding-bottom: 0.2rem !important;
@@ -137,12 +137,45 @@ st.markdown(f"""
         padding-right: 0.5rem !important;
         font-size: 0.9rem !important;
     }}
-
-    /* ANIMATION */
-    @keyframes fade-in {{
-        0% {{ opacity: 0; letter-spacing: 0px; }}
-        100% {{ opacity: 1; letter-spacing: 8px; }}
+    
+    .cal-note-container {{
+        padding: 8px 0;
+        margin-bottom: 5px;
+        border-bottom: 1px solid #eee;
     }}
+    .cal-note-container:last-child {{
+        border-bottom: none;
+    }}
+
+    /* --- MOBILE OPTIMIZATIONS (@media) --- */
+    @media only screen and (max-width: 600px) {{
+        /* Reduce Main Padding */
+        .block-container {{
+            padding-left: 1rem !important;
+            padding-right: 1rem !important;
+            padding-top: 2rem !important;
+        }}
+        
+        /* Title Smaller on Mobile */
+        .dor-title {{
+            font-size: 1.8rem !important;
+            letter-spacing: 2px !important;
+        }}
+        
+        /* Section Headers Smaller */
+        .section-header {{
+            font-size: 1.1rem !important;
+            margin-top: 20px !important;
+        }}
+
+        /* Make buttons full width of their column on mobile */
+        .stButton button {{
+            width: 100% !important;
+        }}
+    }}
+    
+    /* ANIMATION */
+    @keyframes fade-in {{ 0% {{ opacity: 0; }} 100% {{ opacity: 1; }} }}
     .splash-text {{
         font-family: 'Helvetica Neue', sans-serif;
         font-weight: 300;
@@ -152,18 +185,6 @@ st.markdown(f"""
         text-transform: uppercase;
         animation: fade-in 2.0s ease-out;
         margin-top: 30vh;
-    }}
-    
-    div[data-testid="column"] {{ display: flex; align-items: center; }}
-    
-    /* CALENDAR DAY NOTE */
-    .cal-note-container {{
-        padding: 8px 0;
-        margin-bottom: 5px;
-        border-bottom: 1px solid #eee;
-    }}
-    .cal-note-container:last-child {{
-        border-bottom: none;
     }}
 </style>
 """, unsafe_allow_html=True)
@@ -335,9 +356,19 @@ def render_create_note_form(key_suffix, date_ref=None):
     else:
         title = st.text_input("Title (Optional)", key=f"dt_{key_suffix}")
         labels = st.text_input("Labels", key=f"dl_{key_suffix}")
-        c_w, c_h = st.columns(2)
-        cw = c_w.slider("Width (px)", 200, 1000, 600, key=f"cw_{key_suffix}")
-        ch = c_h.slider("Height (px)", 200, 1000, 400, key=f"ch_{key_suffix}")
+        
+        # CANVAS SIZE CONTROLS (Responsive)
+        c_w, c_h, c_preset = st.columns([2, 2, 1])
+        cw = c_w.slider("Width (px)", 200, 1000, st.session_state.canvas_w, key=f"cw_{key_suffix}")
+        ch = c_h.slider("Height (px)", 200, 1000, st.session_state.canvas_h, key=f"ch_{key_suffix}")
+        with c_preset:
+            st.write("") # Spacer
+            st.write("") 
+            if st.button("📱 Phone", key=f"mb_{key_suffix}", help="Set 340x500px"):
+                st.session_state.canvas_w = 340
+                st.session_state.canvas_h = 500
+                st.rerun()
+
         c1, c2, c3 = st.columns([1, 2, 1])
         with c1:
             st.markdown("<b>Set colour</b>", unsafe_allow_html=True)
@@ -346,13 +377,17 @@ def render_create_note_form(key_suffix, date_ref=None):
             tl = st.radio("Tool", ["Pen", "Pencil", "Highlighter", "Eraser"], horizontal=True, key=f"tt_{key_suffix}")
         with c3:
             sw = st.slider("Width", 1, 30, 2, key=f"ss_{key_suffix}")
+            
         if tl == "Eraser": bc = "#ffffff"
         fc = bc
         if tl == "Pencil": fc = hex_to_rgba(bc, 0.7); sw = 2 if sw > 5 else sw
         elif tl == "Highlighter": fc = hex_to_rgba(bc, 0.4); sw = 15 if sw < 10 else sw
         elif tl == "Eraser": sw = 20 if sw < 10 else sw
+        
+        # Unique key includes width/height so it reloads when size changes
         ckey = f"cv_{cw}_{ch}_{key_suffix}"
         res = st_canvas(fill_color="rgba(0,0,0,0)", stroke_width=sw, stroke_color=fc, background_color="#FFF", update_streamlit=True, height=ch, width=cw, drawing_mode="freedraw", key=ckey)
+        
         if st.button("Save Drawing", key=f"bs_{key_suffix}"):
             if logic_save_note(title, labels, None, None, "Drawing", res, date_ref, recur_val, stop_year_val):
                 st.toast("Saved!", icon="✅")
@@ -381,7 +416,7 @@ def open_settings():
     
     st.divider()
     
-    # STATISTICS (MOVED & RENAMED)
+    # STATISTICS
     st.write("**Statistics**")
     all_notes_stat = list(collection.find({}))
     total_count = len(all_notes_stat)

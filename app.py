@@ -32,24 +32,22 @@ if 'grid_cols' not in st.session_state: st.session_state.grid_cols = 4
 if 'auto_clean_enabled' not in st.session_state: st.session_state.auto_clean_enabled = True
 if 'reset_counter' not in st.session_state: st.session_state.reset_counter = 0
 
-# Canvas Defaults (Responsive logic support)
+# Canvas Defaults
 if 'canvas_w' not in st.session_state: st.session_state.canvas_w = 600
 if 'canvas_h' not in st.session_state: st.session_state.canvas_h = 400
 
-# --- 3. CSS AESTHETIC (MOBILE OPTIMIZED) ---
+# --- 3. CSS AESTHETIC & MOBILE OPTIMIZATION ---
 st.markdown(f"""
 <style>
-    /* GLOBAL FONTS & STYLES */
+    /* --- DESKTOP & BASE STYLES --- */
+    
     .dor-title {{
         font-family: 'Helvetica Neue', 'Helvetica', 'Arial', sans-serif;
         font-weight: 300;
         font-size: 2.2rem;
-        color: #000000;
-        text-align: left;
-        letter-spacing: 4px;
-        text-transform: uppercase;
-        margin-top: 10px;
-        margin-bottom: 0px;
+        color: #000;
+        margin-top: 10px; margin-bottom: 0px;
+        white-space: nowrap; /* Prevent wrapping on mobile */
     }}
 
     .section-header {{
@@ -57,12 +55,10 @@ st.markdown(f"""
         font-weight: 300;
         font-size: 1.4rem;
         color: #000;
-        margin-top: 30px;
-        margin-bottom: 15px;
+        margin-top: 30px; margin-bottom: 15px;
         border-bottom: 2px solid #888;
         padding-bottom: 8px;
-        letter-spacing: 2px;
-        text-transform: uppercase;
+        letter-spacing: 2px; text-transform: uppercase;
     }}
 
     /* EXPANDER */
@@ -74,118 +70,90 @@ st.markdown(f"""
         margin-bottom: 10px;
     }}
     .streamlit-expanderHeader {{
-        font-weight: 600;
-        font-size: 1.0rem;
-        color: #333;
-        background-color: #fff;
-        border-radius: 12px 12px 0 0;
-        padding-top: 0.5rem !important;
-        padding-bottom: 0.5rem !important;
+        font-weight: 600; font-size: 1.0rem;
+        background-color: #fff; border-radius: 12px 12px 0 0;
+        padding-top: 0.5rem !important; padding-bottom: 0.5rem !important;
     }}
     .streamlit-expanderContent {{
         border-top: 1px solid #f8f8f8;
         font-size: {st.session_state.text_size};
-        padding-top: 10px;
-        border-radius: 0 0 12px 12px;
+        padding-top: 10px; border-radius: 0 0 12px 12px;
     }}
     
-    /* READ CONTENT */
-    .quill-read-content {{
-        font-size: {st.session_state.text_size} !important;
-        font-family: 'Georgia', serif;
-        line-height: 1.6;
-    }}
-    .quill-read-content a {{
-        color: #1E90FF !important;
-        text-decoration: underline !important;
-        cursor: pointer !important;
-    }}
+    .quill-read-content {{ font-size: {st.session_state.text_size} !important; font-family: 'Georgia', serif; line-height: 1.6; }}
+    .quill-read-content a {{ color: #1E90FF !important; text-decoration: underline !important; cursor: pointer !important; }}
 
-    /* BADGE */
     .dor-badge {{
-        display: inline-block;
-        background-color: #f0f0f0;
-        color: #333;
-        border: 1px solid #ddd;
-        padding: 2px 8px;
-        border-radius: 12px;
-        font-size: 0.75rem;
-        font-family: 'Helvetica', sans-serif;
-        margin-right: 5px;
-        margin-bottom: 5px;
-        font-weight: 600;
-        letter-spacing: 0.5px;
-        text-transform: uppercase;
+        display: inline-block; background-color: #f0f0f0; color: #333;
+        border: 1px solid #ddd; padding: 2px 8px; border-radius: 12px;
+        font-size: 0.75rem; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase;
     }}
 
-    /* INPUTS BORDER FIX */
-    div[data-baseweb="input"] {{ border-color: #e0e0e0 !important; border-radius: 8px !important; }}
-    div[data-baseweb="input"]:focus-within {{ border: 1px solid #333333 !important; box-shadow: none !important; }}
-    div[data-baseweb="textarea"] {{ border-color: #e0e0e0 !important; border-radius: 8px !important; }}
-    div[data-baseweb="textarea"]:focus-within {{ border: 1px solid #333333 !important; box-shadow: none !important; }}
-    div[data-testid="stNumberInput"] > div > div {{ border-color: #e0e0e0 !important; border-radius: 8px !important; }}
-    div[data-testid="stNumberInput"] > div > div:focus-within {{ border: 1px solid #333333 !important; box-shadow: none !important; }}
-    div[data-baseweb="select"] > div {{ border-color: #e0e0e0 !important; border-radius: 8px !important; }}
-    div[data-baseweb="select"] > div:focus-within {{ border-color: #000000 !important; box-shadow: 0 0 0 1px #000000 !important; }}
+    /* INPUTS & BUTTONS */
+    div[data-baseweb="input"], div[data-baseweb="textarea"], div[data-baseweb="select"] > div, div[data-testid="stNumberInput"] > div > div {{
+        border-color: #e0e0e0 !important; border-radius: 8px !important;
+    }}
+    div[data-baseweb="input"]:focus-within, div[data-baseweb="textarea"]:focus-within, div[data-baseweb="select"] > div:focus-within, div[data-testid="stNumberInput"] > div > div:focus-within {{
+        border-color: #000000 !important; box-shadow: 0 0 0 1px #000000 !important;
+    }}
     input:focus {{ outline: none !important; border-color: #000000 !important; }}
 
-    /* BUTTONS */
     .stButton button {{
-        padding-top: 0.2rem !important;
-        padding-bottom: 0.2rem !important;
-        padding-left: 0.5rem !important;
-        padding-right: 0.5rem !important;
+        padding: 0.2rem 0.5rem !important;
         font-size: 0.9rem !important;
-    }}
-    
-    .cal-note-container {{
-        padding: 8px 0;
-        margin-bottom: 5px;
-        border-bottom: 1px solid #eee;
-    }}
-    .cal-note-container:last-child {{
-        border-bottom: none;
+        width: 100%; /* Full width in column */
     }}
 
-    /* --- MOBILE OPTIMIZATIONS (@media) --- */
+    /* CALENDAR */
+    .cal-note-container {{ padding: 8px 0; margin-bottom: 5px; border-bottom: 1px solid #eee; }}
+    .cal-note-container:last-child {{ border-bottom: none; }}
+
+    /* --- MOBILE SPECIFIC OPTIMIZATIONS (@media) --- */
     @media only screen and (max-width: 600px) {{
-        /* Reduce Main Padding */
-        .block-container {{
-            padding-left: 1rem !important;
-            padding-right: 1rem !important;
-            padding-top: 2rem !important;
+        
+        /* 1. HEADER INLINE FIX */
+        /* Force the header columns to stay in a row using flexbox hacks on the container */
+        [data-testid="stHorizontalBlock"]:has(.dor-title) {{
+            display: flex !important;
+            flex-wrap: nowrap !important;
+            align-items: center !important;
+        }}
+        /* Adjust widths for header items on mobile */
+        [data-testid="stHorizontalBlock"]:has(.dor-title) [data-testid="column"]:nth-child(1) {{
+            flex: 8 !important; overflow: hidden;
+        }}
+        [data-testid="stHorizontalBlock"]:has(.dor-title) [data-testid="column"]:nth-child(2),
+        [data-testid="stHorizontalBlock"]:has(.dor-title) [data-testid="column"]:nth-child(3) {{
+            flex: 1 !important; min-width: 40px !important;
         }}
         
-        /* Title Smaller on Mobile */
-        .dor-title {{
-            font-size: 1.8rem !important;
-            letter-spacing: 2px !important;
+        /* 2. MOBILE GRID (FORCE 2 COLUMNS FOR NOTES) */
+        /* We target columns that contain expanders to force 50% width */
+        /* Note: This is tricky in Streamlit. We apply a general rule but reset it for forms */
+        
+        [data-testid="column"] {{
+            width: 50% !important;
+            flex: 1 1 50% !important;
+            min-width: 50% !important;
         }}
         
-        /* Section Headers Smaller */
-        .section-header {{
-            font-size: 1.1rem !important;
-            margin-top: 20px !important;
-        }}
-
-        /* Make buttons full width of their column on mobile */
-        .stButton button {{
+        /* EXEMPTIONS: Reset to 100% for Forms, Header, and specific controls */
+        [data-testid="stForm"] [data-testid="column"], 
+        [data-testid="stHorizontalBlock"]:has(.dor-title) [data-testid="column"],
+        [data-testid="stHorizontalBlock"]:has(.stSelectbox) [data-testid="column"] {{
             width: 100% !important;
+            flex: 1 1 100% !important;
         }}
+        
+        .dor-title {{ font-size: 1.5rem !important; }}
+        .section-header {{ font-size: 1.2rem !important; margin-top: 20px !important; }}
+        
+        /* Hide extra padding */
+        .block-container {{ padding-top: 2rem !important; padding-left: 0.5rem !important; padding-right: 0.5rem !important; }}
     }}
     
-    /* ANIMATION */
     @keyframes fade-in {{ 0% {{ opacity: 0; }} 100% {{ opacity: 1; }} }}
-    .splash-text {{
-        font-family: 'Helvetica Neue', sans-serif;
-        font-weight: 300;
-        font-size: 3rem;
-        color: black;
-        text-align: center;
-        text-transform: uppercase;
-        animation: fade-in 2.0s ease-out;
-        margin-top: 30vh;
-    }}
+    .splash-text {{ font-family: 'Helvetica Neue', sans-serif; font-weight: 300; font-size: 3rem; text-align: center; margin-top: 30vh; animation: fade-in 2.0s ease-out; }}
 </style>
 """, unsafe_allow_html=True)
 
@@ -338,11 +306,25 @@ def render_create_note_form(key_suffix, date_ref=None):
 
     if note_type == "Text":
         with st.form(f"form_{key_suffix}", clear_on_submit=True):
-            title = st.text_input("Title (Optional)")
-            labels = st.text_input("Labels")
+            # LAYOUT: Title | Labels (Same Row)
+            c_tit, c_lab = st.columns([2, 1])
+            with c_tit:
+                title = st.text_input("Title (Optional)")
+            with c_lab:
+                labels = st.text_input("Labels")
+                
             content = st_quill(placeholder="Write here...", html=True, toolbar=toolbar_config)
-            f_up = st.file_uploader("Attachment", type=['pdf', 'docx', 'txt', 'mp3', 'wav', 'jpg', 'png'])
-            if st.form_submit_button("Save Note"):
+            
+            # LAYOUT: Attachment | Save Button (Same Row)
+            c_file, c_btn = st.columns([3, 1])
+            with c_file:
+                f_up = st.file_uploader("Attachment (<200MB)", type=['pdf', 'docx', 'txt', 'mp3', 'wav', 'jpg', 'png'])
+            with c_btn:
+                st.write("") # Spacer to align button down
+                st.write("") 
+                submitted = st.form_submit_button("Save Note")
+            
+            if submitted:
                 if logic_save_note(title, labels, content, f_up, "Text", None, date_ref, recur_val, stop_year_val):
                     st.toast("Saved!", icon="✅")
                     if not date_ref:
@@ -354,17 +336,20 @@ def render_create_note_form(key_suffix, date_ref=None):
                 else:
                     st.warning("Empty note not saved.")
     else:
-        title = st.text_input("Title (Optional)", key=f"dt_{key_suffix}")
-        labels = st.text_input("Labels", key=f"dl_{key_suffix}")
+        # DRAWING MODE
+        # Row 1: Title | Labels
+        c_t, c_l = st.columns([2, 1])
+        with c_t: title = st.text_input("Title (Optional)", key=f"dt_{key_suffix}")
+        with c_l: labels = st.text_input("Labels", key=f"dl_{key_suffix}")
         
-        # CANVAS SIZE CONTROLS (Responsive)
+        # Row 2: Canvas Size & Preset
         c_w, c_h, c_preset = st.columns([2, 2, 1])
-        cw = c_w.slider("Width (px)", 200, 1000, st.session_state.canvas_w, key=f"cw_{key_suffix}")
-        ch = c_h.slider("Height (px)", 200, 1000, st.session_state.canvas_h, key=f"ch_{key_suffix}")
+        cw = c_w.slider("Width", 200, 1000, st.session_state.canvas_w, key=f"cw_{key_suffix}")
+        ch = c_h.slider("Height", 200, 1000, st.session_state.canvas_h, key=f"ch_{key_suffix}")
         with c_preset:
-            st.write("") # Spacer
             st.write("") 
-            if st.button("📱 Phone", key=f"mb_{key_suffix}", help="Set 340x500px"):
+            st.write("") 
+            if st.button("📱 Phone", key=f"mb_{key_suffix}"):
                 st.session_state.canvas_w = 340
                 st.session_state.canvas_h = 500
                 st.rerun()
@@ -384,7 +369,6 @@ def render_create_note_form(key_suffix, date_ref=None):
         elif tl == "Highlighter": fc = hex_to_rgba(bc, 0.4); sw = 15 if sw < 10 else sw
         elif tl == "Eraser": sw = 20 if sw < 10 else sw
         
-        # Unique key includes width/height so it reloads when size changes
         ckey = f"cv_{cw}_{ch}_{key_suffix}"
         res = st_canvas(fill_color="rgba(0,0,0,0)", stroke_width=sw, stroke_color=fc, background_color="#FFF", update_streamlit=True, height=ch, width=cw, drawing_mode="freedraw", key=ckey)
         
@@ -413,10 +397,7 @@ def open_settings():
     if size_opt != st.session_state.text_size:
         st.session_state.text_size = size_opt
         st.rerun()
-    
     st.divider()
-    
-    # STATISTICS
     st.write("**Statistics**")
     all_notes_stat = list(collection.find({}))
     total_count = len(all_notes_stat)
@@ -436,7 +417,6 @@ def open_settings():
     c1.metric("Total Notes", total_count)
     c2.metric("Dashboard", dash_count)
     c3.metric("Calendar", cal_count)
-    
     st.metric("Trash", trash_count)
     st.write(f"**Storage Used:** {size_mb:.2f} MB / 512 MB")
     st.progress(min(percentage / 100, 1.0))
@@ -477,11 +457,12 @@ def open_settings():
 @st.dialog("Edit Note", width="large")
 def open_edit_popup(note_id, old_title, old_content, old_filename, old_labels, note_type, drawing_data=None, date_ref=None, is_default=False):
     st.markdown("### Edit Content")
-    labels_str = ", ".join(old_labels) if old_labels else ""
     
     with st.form(key=f"edit_form_{note_id}"):
-        new_title = st.text_input("Title", value=old_title)
-        new_labels_str = st.text_input("Labels", value=labels_str)
+        # INLINE LAYOUT for Edit as well
+        c_t, c_l = st.columns([2, 1])
+        with c_t: new_title = st.text_input("Title", value=old_title)
+        with c_l: new_labels_str = st.text_input("Labels", value=", ".join(old_labels) if old_labels else "")
         
         new_date_str = None
         if date_ref and not is_default:
@@ -492,7 +473,6 @@ def open_edit_popup(note_id, old_title, old_content, old_filename, old_labels, n
             except: pass
 
         safe_content = flatten_formulas_to_text(old_content)
-        
         canvas_result = None
         new_file = None
         new_content = safe_content
@@ -523,7 +503,6 @@ def open_edit_popup(note_id, old_title, old_content, old_filename, old_labels, n
         if st.form_submit_button("Save Changes", type="primary"):
             labels_list = [tag.strip() for tag in new_labels_str.split(",") if tag.strip()]
             update_data = {"titolo": new_title, "labels": labels_list, "data": datetime.now()}
-            
             if new_date_str: update_data["calendar_date"] = new_date_str
 
             if note_type == "disegno":
@@ -622,7 +601,8 @@ def confirm_deletion(note_id):
 
 # --- MAIN LAYOUT ---
 
-head_col1, head_col2, head_col3 = st.columns([9.0, 0.5, 0.5])
+# Header Row with Icons on same line (Flex forced on Mobile)
+head_col1, head_col2, head_col3 = st.columns([8, 1, 1])
 with head_col1: st.markdown("<div class='dor-title'>DOR NOTES</div>", unsafe_allow_html=True)
 with head_col2: 
     st.markdown("<div style='height: 15px;'></div>", unsafe_allow_html=True)

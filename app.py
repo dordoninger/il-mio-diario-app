@@ -39,15 +39,16 @@ if 'canvas_h' not in st.session_state: st.session_state.canvas_h = 400
 # --- 3. CSS AESTHETIC & MOBILE OPTIMIZATION ---
 st.markdown(f"""
 <style>
-    /* --- DESKTOP & BASE STYLES --- */
+    /* --- GLOBAL STYLES --- */
     
     .dor-title {{
         font-family: 'Helvetica Neue', 'Helvetica', 'Arial', sans-serif;
         font-weight: 300;
         font-size: 2.2rem;
         color: #000;
-        margin-top: 10px; margin-bottom: 0px;
-        white-space: nowrap; /* Prevent wrapping on mobile */
+        margin-top: 0px; margin-bottom: 0px;
+        white-space: nowrap;
+        line-height: 1.2;
     }}
 
     .section-header {{
@@ -80,6 +81,7 @@ st.markdown(f"""
         padding-top: 10px; border-radius: 0 0 12px 12px;
     }}
     
+    /* READ CONTENT */
     .quill-read-content {{ font-size: {st.session_state.text_size} !important; font-family: 'Georgia', serif; line-height: 1.6; }}
     .quill-read-content a {{ color: #1E90FF !important; text-decoration: underline !important; cursor: pointer !important; }}
 
@@ -101,55 +103,73 @@ st.markdown(f"""
     .stButton button {{
         padding: 0.2rem 0.5rem !important;
         font-size: 0.9rem !important;
-        width: 100%; /* Full width in column */
+        width: 100%;
     }}
 
-    /* CALENDAR */
+    /* CALENDAR NOTE */
     .cal-note-container {{ padding: 8px 0; margin-bottom: 5px; border-bottom: 1px solid #eee; }}
     .cal-note-container:last-child {{ border-bottom: none; }}
 
-    /* --- MOBILE SPECIFIC OPTIMIZATIONS (@media) --- */
+    /* --- 2. FILE UPLOADER CLEANUP (Hides "Drag and drop" text) --- */
+    [data-testid="stFileUploader"] section > div > div > span, 
+    [data-testid="stFileUploader"] section > div > div > small {{
+        display: none !important;
+    }}
+    [data-testid="stFileUploader"] section {{
+        padding: 0 !important;
+        min-height: 0px !important;
+    }}
+    [data-testid="stFileUploader"] button {{
+        margin-top: 0px !important;
+    }}
+
+    /* --- 1 & 3. MOBILE OPTIMIZATIONS (@media) --- */
     @media only screen and (max-width: 600px) {{
         
-        /* 1. HEADER INLINE FIX */
-        /* Force the header columns to stay in a row using flexbox hacks on the container */
+        /* Adjust Padding to avoid white space */
+        .block-container {{
+            padding-top: 2rem !important;
+            padding-left: 0.5rem !important;
+            padding-right: 0.5rem !important;
+        }}
+
+        /* HEADER: Force Row Layout */
         [data-testid="stHorizontalBlock"]:has(.dor-title) {{
             display: flex !important;
+            flex-direction: row !important;
             flex-wrap: nowrap !important;
             align-items: center !important;
-        }}
-        /* Adjust widths for header items on mobile */
-        [data-testid="stHorizontalBlock"]:has(.dor-title) [data-testid="column"]:nth-child(1) {{
-            flex: 8 !important; overflow: hidden;
-        }}
-        [data-testid="stHorizontalBlock"]:has(.dor-title) [data-testid="column"]:nth-child(2),
-        [data-testid="stHorizontalBlock"]:has(.dor-title) [data-testid="column"]:nth-child(3) {{
-            flex: 1 !important; min-width: 40px !important;
+            gap: 5px !important;
         }}
         
-        /* 2. MOBILE GRID (FORCE 2 COLUMNS FOR NOTES) */
-        /* We target columns that contain expanders to force 50% width */
-        /* Note: This is tricky in Streamlit. We apply a general rule but reset it for forms */
-        
-        [data-testid="column"] {{
-            width: 50% !important;
-            flex: 1 1 50% !important;
-            min-width: 50% !important;
+        /* Force Title width */
+        [data-testid="stHorizontalBlock"]:has(.dor-title) > div:nth-child(1) {{
+            flex: 1 1 auto !important;
+            min-width: 0 !important;
         }}
         
-        /* EXEMPTIONS: Reset to 100% for Forms, Header, and specific controls */
-        [data-testid="stForm"] [data-testid="column"], 
-        [data-testid="stHorizontalBlock"]:has(.dor-title) [data-testid="column"],
-        [data-testid="stHorizontalBlock"]:has(.stSelectbox) [data-testid="column"] {{
-            width: 100% !important;
-            flex: 1 1 100% !important;
+        /* Force Icons width (Settings & Trash) */
+        [data-testid="stHorizontalBlock"]:has(.dor-title) > div:nth-child(2),
+        [data-testid="stHorizontalBlock"]:has(.dor-title) > div:nth-child(3) {{
+            flex: 0 0 auto !important;
+            width: 40px !important;
+            min-width: 40px !important;
         }}
-        
+
         .dor-title {{ font-size: 1.5rem !important; }}
-        .section-header {{ font-size: 1.2rem !important; margin-top: 20px !important; }}
         
-        /* Hide extra padding */
-        .block-container {{ padding-top: 2rem !important; padding-left: 0.5rem !important; padding-right: 0.5rem !important; }}
+        /* ACTION BUTTONS (Edit/Pin/Move/Del) - Force 4 in a row */
+        /* We target the columns inside expanders */
+        [data-testid="stExpander"] [data-testid="column"] {{
+            min-width: 0px !important;
+            padding: 0 2px !important; /* Reduce gap between buttons */
+        }}
+        
+        /* Override Streamlit's mobile stacking */
+        div[data-testid="column"] {{
+            width: auto !important;
+            flex: 1 !important;
+        }}
     }}
     
     @keyframes fade-in {{ 0% {{ opacity: 0; }} 100% {{ opacity: 1; }} }}
@@ -308,19 +328,18 @@ def render_create_note_form(key_suffix, date_ref=None):
         with st.form(f"form_{key_suffix}", clear_on_submit=True):
             # LAYOUT: Title | Labels (Same Row)
             c_tit, c_lab = st.columns([2, 1])
-            with c_tit:
-                title = st.text_input("Title (Optional)")
-            with c_lab:
-                labels = st.text_input("Labels")
+            with c_tit: title = st.text_input("Title (Optional)")
+            with c_lab: labels = st.text_input("Labels")
                 
             content = st_quill(placeholder="Write here...", html=True, toolbar=toolbar_config)
             
-            # LAYOUT: Attachment | Save Button (Same Row)
+            # LAYOUT: Attachment | Save Button (Same Row, No Text)
             c_file, c_btn = st.columns([3, 1])
             with c_file:
+                # Label is hidden via CSS
                 f_up = st.file_uploader("Attachment (<200MB)", type=['pdf', 'docx', 'txt', 'mp3', 'wav', 'jpg', 'png'])
             with c_btn:
-                st.write("") # Spacer to align button down
+                st.write("") # Alignment spacer
                 st.write("") 
                 submitted = st.form_submit_button("Save Note")
             
@@ -337,12 +356,10 @@ def render_create_note_form(key_suffix, date_ref=None):
                     st.warning("Empty note not saved.")
     else:
         # DRAWING MODE
-        # Row 1: Title | Labels
         c_t, c_l = st.columns([2, 1])
         with c_t: title = st.text_input("Title (Optional)", key=f"dt_{key_suffix}")
         with c_l: labels = st.text_input("Labels", key=f"dl_{key_suffix}")
         
-        # Row 2: Canvas Size & Preset
         c_w, c_h, c_preset = st.columns([2, 2, 1])
         cw = c_w.slider("Width", 200, 1000, st.session_state.canvas_w, key=f"cw_{key_suffix}")
         ch = c_h.slider("Height", 200, 1000, st.session_state.canvas_h, key=f"ch_{key_suffix}")
@@ -397,7 +414,10 @@ def open_settings():
     if size_opt != st.session_state.text_size:
         st.session_state.text_size = size_opt
         st.rerun()
+    
     st.divider()
+    
+    # STATISTICS
     st.write("**Statistics**")
     all_notes_stat = list(collection.find({}))
     total_count = len(all_notes_stat)
@@ -417,6 +437,7 @@ def open_settings():
     c1.metric("Total Notes", total_count)
     c2.metric("Dashboard", dash_count)
     c3.metric("Calendar", cal_count)
+    
     st.metric("Trash", trash_count)
     st.write(f"**Storage Used:** {size_mb:.2f} MB / 512 MB")
     st.progress(min(percentage / 100, 1.0))
@@ -457,12 +478,13 @@ def open_settings():
 @st.dialog("Edit Note", width="large")
 def open_edit_popup(note_id, old_title, old_content, old_filename, old_labels, note_type, drawing_data=None, date_ref=None, is_default=False):
     st.markdown("### Edit Content")
+    labels_str = ", ".join(old_labels) if old_labels else ""
     
     with st.form(key=f"edit_form_{note_id}"):
-        # INLINE LAYOUT for Edit as well
+        # INLINE LAYOUT
         c_t, c_l = st.columns([2, 1])
         with c_t: new_title = st.text_input("Title", value=old_title)
-        with c_l: new_labels_str = st.text_input("Labels", value=", ".join(old_labels) if old_labels else "")
+        with c_l: new_labels_str = st.text_input("Labels", value=labels_str)
         
         new_date_str = None
         if date_ref and not is_default:
@@ -473,6 +495,7 @@ def open_edit_popup(note_id, old_title, old_content, old_filename, old_labels, n
             except: pass
 
         safe_content = flatten_formulas_to_text(old_content)
+        
         canvas_result = None
         new_file = None
         new_content = safe_content
@@ -498,11 +521,15 @@ def open_edit_popup(note_id, old_title, old_content, old_filename, old_labels, n
             unique_key = f"quill_edit_{note_id}_{st.session_state.edit_trigger}"
             new_content = st_quill(value=safe_content, toolbar=toolbar_config, html=True, key=unique_key)
             st.divider()
-            new_file = st.file_uploader("Replace File", type=['pdf', 'docx', 'txt', 'mp3', 'wav', 'jpg', 'png'])
+            # INLINE FILE UPLOAD IN EDIT
+            c_file, c_space = st.columns([3, 1])
+            with c_file:
+                new_file = st.file_uploader("Replace File", type=['pdf', 'docx', 'txt', 'mp3', 'wav', 'jpg', 'png'])
 
         if st.form_submit_button("Save Changes", type="primary"):
             labels_list = [tag.strip() for tag in new_labels_str.split(",") if tag.strip()]
             update_data = {"titolo": new_title, "labels": labels_list, "data": datetime.now()}
+            
             if new_date_str: update_data["calendar_date"] = new_date_str
 
             if note_type == "disegno":
@@ -601,7 +628,7 @@ def confirm_deletion(note_id):
 
 # --- MAIN LAYOUT ---
 
-# Header Row with Icons on same line (Flex forced on Mobile)
+# MOBILE-OPTIMIZED HEADER (Flexbox forced in CSS)
 head_col1, head_col2, head_col3 = st.columns([8, 1, 1])
 with head_col1: st.markdown("<div class='dor-title'>DOR NOTES</div>", unsafe_allow_html=True)
 with head_col2: 
@@ -669,18 +696,19 @@ with tab_dash:
                         st.caption(f"File: {note['file_name']}")
                         st.download_button("Download", data=note["file_data"], file_name=note["file_name"], key=f"dl_{note['_id']}")
                     
-                    st.markdown("---")
-                    c_mod, c_pin, c_move, c_del = st.columns(4)
-                    if c_mod.button("✎", key=f"m_{note['_id']}"):
+                    # DASHBOARD ACTIONS - MOBILE: 4 IN A ROW (25% each via flex)
+                    c1, c2, c3, c4 = st.columns(4)
+                    
+                    if c1.button("✎", key=f"m_{note['_id']}"):
                         draw_data = note.get("drawing_json", None)
                         open_edit_popup(note['_id'], note['titolo'], note['contenuto'], note.get("file_name"), labels, note.get("tipo"), draw_data)
                     
                     label_pin = "⚲"
-                    if c_pin.button(label_pin, key=f"p_{note['_id']}"):
+                    if c2.button(label_pin, key=f"p_{note['_id']}"):
                          collection.update_one({"_id": note['_id']}, {"$set": {"pinned": not note.get("pinned", False)}})
                          st.rerun()
-                    if c_move.button("⇄", key=f"mv_{note['_id']}"): open_move_popup(note['_id'])
-                    if c_del.button("🗑", key=f"d_{note['_id']}"): confirm_deletion(note['_id'])
+                    if c3.button("⇄", key=f"mv_{note['_id']}"): open_move_popup(note['_id'])
+                    if c4.button("🗑", key=f"d_{note['_id']}"): confirm_deletion(note['_id'])
 
     if not all_notes: st.info("No dashboard notes.")
     else:
@@ -776,7 +804,7 @@ with tab_cal:
     for day in range(1, num_days + 1):
         date_str = f"{st.session_state.cal_year}-{st.session_state.cal_month:02d}-{day:02d}"
         dt = date(st.session_state.cal_year, st.session_state.cal_month, day)
-        day_name = dt.strftime("%A, %d %B %Y") # UPDATED FORMAT
+        day_name = dt.strftime("%A, %d %B %Y")
         
         # DEFAULT NOTE CHECK
         has_default = False
@@ -835,6 +863,8 @@ with tab_cal:
                     if note.get("file_name") and note.get("tipo") != "disegno":
                         st.download_button("Download", data=note["file_data"], file_name=note["file_name"], key=f"dlc_{note['_id']}")
                     
+                    # CALENDAR BUTTONS
+                    # On mobile, CSS will force these 100% or similar, on Desktop they are compact left
                     c1, c2, c3, c_space = st.columns([0.8, 0.8, 0.8, 6])
                     
                     if c1.button("✎", key=f"ced_{note['_id']}"): # Only Icon
@@ -880,7 +910,6 @@ with tab_cal:
                     st.rerun()
         else:
             with c_add:
-                # UPDATED ADD BUTTON
                 if st.button("+ Add Note", key=f"add_{date_str}"):
                     st.session_state.cal_create_date = date_str
                     st.rerun()

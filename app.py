@@ -75,105 +75,77 @@ st.components.v1.html(swipe_js, height=0)
 # --- 4. CSS AESTHETIC & MOBILE OPTIMIZATION ---
 st.markdown(f"""
 <style>
-    /* --- 1. ANIMATION: FROM FAR TO NEAR (TRACKING IN CONTRACT) --- */
+    /* --- ANIMATION --- */
     @keyframes tracking-in-contract {{
         0% {{ letter-spacing: 15px; opacity: 0; }}
         40% {{ opacity: 0.6; }}
         100% {{ letter-spacing: 4px; opacity: 1; }}
     }}
-    
     .splash-text {{
-        font-family: 'Helvetica Neue', sans-serif;
-        font-weight: 300;
-        font-size: 3rem;
-        color: black;
-        text-align: center;
-        text-transform: uppercase;
-        margin-top: 35vh;
+        font-family: 'Helvetica Neue', sans-serif; font-weight: 300; font-size: 3rem;
+        color: black; text-align: center; text-transform: uppercase; margin-top: 35vh;
         animation: tracking-in-contract 1.5s cubic-bezier(0.215, 0.610, 0.355, 1.000) both;
     }}
 
     /* --- GLOBAL STYLES --- */
     .dor-title {{
-        font-family: 'Helvetica Neue', 'Helvetica', 'Arial', sans-serif;
-        font-weight: 300;
-        font-size: 2.2rem;
-        color: #000;
-        margin-top: 0px; margin-bottom: 0px;
-        white-space: nowrap;
-        line-height: 1.2;
+        font-family: 'Helvetica Neue', 'Helvetica', 'Arial', sans-serif; font-weight: 300;
+        font-size: 2.2rem; color: #000; margin: 0; white-space: nowrap; line-height: 1.2;
     }}
 
     .section-header {{
-        font-family: 'Helvetica Neue', 'Helvetica', 'Arial', sans-serif;
-        font-weight: 300;
-        font-size: 1.4rem;
-        color: #000;
-        margin-top: 30px; margin-bottom: 15px;
-        border-bottom: 2px solid #888;
-        padding-bottom: 8px;
-        letter-spacing: 2px; text-transform: uppercase;
+        font-family: 'Helvetica Neue', 'Helvetica', 'Arial', sans-serif; font-weight: 300;
+        font-size: 1.4rem; color: #000; margin-top: 30px; margin-bottom: 15px;
+        border-bottom: 2px solid #888; padding-bottom: 8px; letter-spacing: 2px; text-transform: uppercase;
     }}
 
     /* EXPANDER */
-    .streamlit-expander {{
-        border-radius: 12px !important;
-        border: 1px solid #e0e0e0 !important;
-        box-shadow: 0 2px 5px rgba(0,0,0,0.03);
-        background-color: white;
-        margin-bottom: 10px;
-    }}
-    .streamlit-expanderHeader {{
-        font-weight: 600; font-size: 1.0rem;
-        background-color: #fff; border-radius: 12px 12px 0 0;
-        padding-top: 0.5rem !important; padding-bottom: 0.5rem !important;
-    }}
-    .streamlit-expanderContent {{
-        border-top: 1px solid #f8f8f8;
-        font-size: {st.session_state.text_size};
-        padding-top: 10px; border-radius: 0 0 12px 12px;
-    }}
+    .streamlit-expander {{ border-radius: 12px !important; border: 1px solid #e0e0e0 !important; box-shadow: 0 2px 5px rgba(0,0,0,0.03); background-color: white; margin-bottom: 10px; }}
+    .streamlit-expanderHeader {{ font-weight: 600; font-size: 1.0rem; background-color: #fff; border-radius: 12px 12px 0 0; padding: 0.5rem !important; }}
+    .streamlit-expanderContent {{ border-top: 1px solid #f8f8f8; font-size: {st.session_state.text_size}; padding-top: 10px; border-radius: 0 0 12px 12px; }}
     
     .quill-read-content {{ font-size: {st.session_state.text_size} !important; font-family: 'Georgia', serif; line-height: 1.6; }}
     .quill-read-content a {{ color: #1E90FF !important; text-decoration: underline !important; cursor: pointer !important; }}
 
-    .dor-badge {{
-        display: inline-block; background-color: #f0f0f0; color: #333;
-        border: 1px solid #ddd; padding: 2px 8px; border-radius: 12px;
-        font-size: 0.75rem; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase;
-    }}
+    .dor-badge {{ display: inline-block; background-color: #f0f0f0; color: #333; border: 1px solid #ddd; padding: 2px 8px; border-radius: 12px; font-size: 0.75rem; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase; }}
 
     /* INPUTS & BUTTONS */
-    div[data-baseweb="input"], div[data-baseweb="textarea"], div[data-baseweb="select"] > div, div[data-testid="stNumberInput"] > div > div {{
-        border-color: #e0e0e0 !important; border-radius: 8px !important;
-    }}
-    div[data-baseweb="input"]:focus-within, div[data-baseweb="textarea"]:focus-within, div[data-baseweb="select"] > div:focus-within, div[data-testid="stNumberInput"] > div > div:focus-within {{
-        border-color: #000000 !important; box-shadow: 0 0 0 1px #000000 !important;
-    }}
+    div[data-baseweb="input"], div[data-baseweb="textarea"], div[data-baseweb="select"] > div, div[data-testid="stNumberInput"] > div > div {{ border-color: #e0e0e0 !important; border-radius: 8px !important; }}
+    div[data-baseweb="input"]:focus-within, div[data-baseweb="textarea"]:focus-within, div[data-baseweb="select"] > div:focus-within, div[data-testid="stNumberInput"] > div > div:focus-within {{ border-color: #000000 !important; box-shadow: 0 0 0 1px #000000 !important; }}
     input:focus {{ outline: none !important; border-color: #000000 !important; }}
 
-    .stButton button {{
-        padding: 0.2rem 0.5rem !important;
-        font-size: 0.9rem !important;
-        width: 100%;
-    }}
+    .stButton button {{ padding: 0.2rem 0.5rem !important; font-size: 0.9rem !important; width: 100%; }}
 
     /* CALENDAR NOTE */
     .cal-note-container {{ padding: 8px 0; margin-bottom: 5px; border-bottom: 1px solid #eee; }}
     .cal-note-container:last-child {{ border-bottom: none; }}
 
-    /* FILE UPLOADER CLEANUP */
-    [data-testid="stFileUploader"] section {{ padding: 0 !important; border: none !important; background-color: transparent !important; min-height: 0px !important; }}
-    [data-testid="stFileUploader"] section > div {{ padding: 0 !important; line-height: 0 !important; }}
-    [data-testid="stFileUploader"] svg, [data-testid="stFileUploader"] span, [data-testid="stFileUploader"] small {{ display: none !important; }}
-    [data-testid="stFileUploader"] button {{ margin-top: 0px !important; border: 1px solid #e0e0e0 !important; }}
+    /* --- FILE UPLOADER CLEANUP (Make button visible, hide box) --- */
+    [data-testid="stFileUploader"] section {{
+        padding: 0 !important; border: none !important; background-color: transparent !important; min-height: 0px !important;
+    }}
+    [data-testid="stFileUploader"] section > div {{
+        padding: 0 !important;
+        display: block !important; /* Ensure button is shown */
+    }}
+    /* Hide texts and icon */
+    [data-testid="stFileUploader"] div[data-testid="stMarkdownContainer"], 
+    [data-testid="stFileUploader"] svg, 
+    [data-testid="stFileUploader"] small {{ display: none !important; }}
+    
+    /* Button Style */
+    [data-testid="stFileUploader"] button {{
+        margin-top: 0px !important;
+        border: 1px solid #e0e0e0 !important;
+        display: inline-flex !important;
+    }}
 
     /* --- MOBILE SPECIFIC OPTIMIZATIONS --- */
     @media only screen and (max-width: 600px) {{
         
         .block-container {{ padding-top: 2rem !important; padding-left: 0.5rem !important; padding-right: 0.5rem !important; }}
 
-        /* HEADER */
+        /* HEADER: Force Row */
         [data-testid="stHorizontalBlock"]:has(.dor-title) {{
             display: flex !important; flex-wrap: nowrap !important; align-items: center !important; gap: 5px !important;
         }}
@@ -183,24 +155,25 @@ st.markdown(f"""
 
         .dor-title {{ font-size: 1.5rem !important; }}
         
-        /* --- 3. BUTTONS IN ROW FIX (FIXED BRACES) --- */
-        [data-testid="stExpander"] [data-testid="stHorizontalBlock"] {{
-            flex-wrap: nowrap !important;
-            gap: 2px !important;
+        /* --- BUTTONS IN ROW FIX --- */
+        /* Force columns containing small action buttons to stay in a row */
+        /* This selector targets the row of buttons in Expander (Dashboard) and Calendar */
+        div[data-testid="column"]:has(button[kind="secondary"]) {{
+            width: auto !important;
+            flex: 0 1 auto !important;
+            min-width: 0 !important;
+            padding: 0 2px !important;
         }}
         
-        [data-testid="stExpander"] [data-testid="column"] {{
-            width: 25% !important;
-            flex: 1 1 0 !important;
-            min-width: 0px !important;
-            padding: 0 1px !important;
+        /* Force the parent container to layout horizontally */
+        [data-testid="stHorizontalBlock"] {{
+             flex-wrap: nowrap !important;
         }}
         
-        [data-testid="stExpander"] .stButton button {{
-            padding: 0.2rem 0rem !important;
-            font-size: 0.7rem !important;
-            white-space: nowrap !important;
-            overflow: hidden !important;
+        /* Adjust button text/padding for mobile */
+        .stButton button {{
+            padding: 0.2rem 0.1rem !important;
+            font-size: 0.8rem !important;
         }}
     }}
 </style>
@@ -359,12 +332,12 @@ def render_create_note_form(key_suffix, date_ref=None):
             with c_tit: title = st.text_input("Title (Optional)")
             with c_lab: labels = st.text_input("Labels")
             content = st_quill(placeholder="Write here...", html=True, toolbar=toolbar_config)
-            c_file, c_btn = st.columns([3, 1])
+            
+            # COMPACT FILE UPLOAD ROW
+            c_file, c_btn = st.columns([2, 1])
             with c_file:
-                f_up = st.file_uploader("Attachment (<200MB)", type=['pdf', 'docx', 'txt', 'mp3', 'wav', 'jpg', 'png'])
+                f_up = st.file_uploader("File", type=['pdf', 'docx', 'txt', 'mp3', 'wav', 'jpg', 'png'], label_visibility="collapsed")
             with c_btn:
-                st.write("") 
-                st.write("") 
                 submitted = st.form_submit_button("Save Note")
             
             if submitted:
@@ -538,9 +511,10 @@ def open_edit_popup(note_id, old_title, old_content, old_filename, old_labels, n
             unique_key = f"quill_edit_{note_id}_{st.session_state.edit_trigger}"
             new_content = st_quill(value=safe_content, toolbar=toolbar_config, html=True, key=unique_key)
             st.divider()
-            c_file, c_space = st.columns([3, 1])
+            # COMPACT UPLOAD IN EDIT
+            c_file, c_space = st.columns([2, 1])
             with c_file:
-                new_file = st.file_uploader("Replace File", type=['pdf', 'docx', 'txt', 'mp3', 'wav', 'jpg', 'png'])
+                new_file = st.file_uploader("Replace File", type=['pdf', 'docx', 'txt', 'mp3', 'wav', 'jpg', 'png'], label_visibility="collapsed")
 
         if st.form_submit_button("Save Changes", type="primary"):
             labels_list = [tag.strip() for tag in new_labels_str.split(",") if tag.strip()]
@@ -712,7 +686,7 @@ with tab_dash:
                         st.download_button("Download", data=note["file_data"], file_name=note["file_name"], key=f"dl_{note['_id']}")
                     
                     st.markdown("---")
-                    # ACTIONS (4 in row on mobile)
+                    # DASHBOARD ACTIONS (4 IN A ROW - Mobile CSS Applied)
                     c1, c2, c3, c4 = st.columns(4)
                     
                     if c1.button("✎", key=f"m_{note['_id']}"):
@@ -741,24 +715,8 @@ with tab_cal:
     # SEARCH IN CALENDAR
     cal_query = st.text_input("🔍", placeholder="Search in the Calendar...", label_visibility="collapsed", key="cal_search")
     
-    c_prev, c_sel_m, c_sel_y, c_next = st.columns([1, 2, 2, 1])
-    
-    with c_prev:
-        if st.button("◀ Prev"):
-            st.session_state.cal_month -= 1
-            if st.session_state.cal_month == 0:
-                st.session_state.cal_month = 12
-                st.session_state.cal_year -= 1
-            st.rerun()
-            
-    with c_next:
-        if st.button("Next ▶"):
-            st.session_state.cal_month += 1
-            if st.session_state.cal_month == 13:
-                st.session_state.cal_month = 1
-                st.session_state.cal_year += 1
-            st.rerun()
-            
+    # MOBILE OPTIMIZED NAV: Row 1 (Month/Year), Row 2 (Prev/Next)
+    c_sel_m, c_sel_y = st.columns(2)
     with c_sel_m:
         month_names = list(calendar.month_name)[1:]
         sel_month_name = st.selectbox("Month", month_names, index=st.session_state.cal_month-1, label_visibility="collapsed")
@@ -766,7 +724,6 @@ with tab_cal:
         if new_month_idx != st.session_state.cal_month:
             st.session_state.cal_month = new_month_idx
             st.rerun()
-            
     with c_sel_y:
         years = list(range(2025, 2125))
         try: y_idx = years.index(st.session_state.cal_year)
@@ -774,6 +731,22 @@ with tab_cal:
         sel_year = st.selectbox("Year", years, index=y_idx, label_visibility="collapsed")
         if sel_year != st.session_state.cal_year:
             st.session_state.cal_year = sel_year
+            st.rerun()
+            
+    c_prev, c_next = st.columns(2)
+    with c_prev:
+        if st.button("◀ Prev", use_container_width=True):
+            st.session_state.cal_month -= 1
+            if st.session_state.cal_month == 0:
+                st.session_state.cal_month = 12
+                st.session_state.cal_year -= 1
+            st.rerun()
+    with c_next:
+        if st.button("Next ▶", use_container_width=True):
+            st.session_state.cal_month += 1
+            if st.session_state.cal_month == 13:
+                st.session_state.cal_month = 1
+                st.session_state.cal_year += 1
             st.rerun()
 
     st.markdown("<hr style='margin: 15px 0; border-top: 2px solid #888; opacity: 1;'>", unsafe_allow_html=True)
@@ -783,7 +756,6 @@ with tab_cal:
     start_date_str = f"{st.session_state.cal_year}-{st.session_state.cal_month:02d}-01"
     end_date_str = f"{st.session_state.cal_year}-{st.session_state.cal_month:02d}-{num_days}"
     
-    # FILTER CALENDAR QUERIES
     q_reg = {"calendar_date": {"$gte": start_date_str, "$lte": end_date_str}, "deleted": {"$ne": True}}
     q_rec = {"deleted": {"$ne": True}, "recurrence": "yearly", "cal_month": st.session_state.cal_month, "$or": [{"recur_end_year": None}, {"recur_end_year": {"$gt": st.session_state.cal_year}}]}
     
@@ -822,7 +794,6 @@ with tab_cal:
         dt = date(st.session_state.cal_year, st.session_state.cal_month, day)
         day_name = dt.strftime("%A, %d %B %Y")
         
-        # DEFAULT NOTE CHECK
         has_default = False
         if date_str in notes_by_day:
             for n in notes_by_day[date_str]:
@@ -879,8 +850,8 @@ with tab_cal:
                     if note.get("file_name") and note.get("tipo") != "disegno":
                         st.download_button("Download", data=note["file_data"], file_name=note["file_name"], key=f"dlc_{note['_id']}")
                     
-                    # CALENDAR BUTTONS (Edit, Copy, Delete) - Compact Left
-                    c1, c2, c3, c_space = st.columns([0.8, 0.8, 0.8, 6])
+                    # CALENDAR ACTIONS (Compact)
+                    c1, c2, c3, c_space = st.columns([1, 1, 1, 6])
                     
                     if c1.button("✎", key=f"ced_{note['_id']}"): # Only Icon
                         draw_data = note.get("drawing_json", None)
@@ -925,7 +896,6 @@ with tab_cal:
                     st.rerun()
         else:
             with c_add:
-                # UPDATED ADD BUTTON
                 if st.button("+ Add Note", key=f"add_{date_str}"):
                     st.session_state.cal_create_date = date_str
                     st.rerun()

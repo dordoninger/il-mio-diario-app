@@ -75,13 +75,12 @@ st.components.v1.html(swipe_js, height=0)
 # --- 4. CSS AESTHETIC & MOBILE OPTIMIZATION ---
 st.markdown(f"""
 <style>
-    /* --- ANIMATION (Far to Near) --- */
+    /* --- ANIMATION --- */
     @keyframes tracking-in-contract {{
         0% {{ letter-spacing: 15px; opacity: 0; }}
         40% {{ opacity: 0.6; }}
         100% {{ letter-spacing: 4px; opacity: 1; }}
     }}
-    
     .splash-text {{
         font-family: 'Helvetica Neue', sans-serif; font-weight: 300; font-size: 3rem;
         color: black; text-align: center; text-transform: uppercase; margin-top: 35vh;
@@ -120,19 +119,49 @@ st.markdown(f"""
         border-color: #000000 !important; box-shadow: 0 0 0 1px #000000 !important;
     }}
     input:focus {{ outline: none !important; border-color: #000000 !important; }}
+    
+    /* --- BUTTONS --- */
+    .stButton button {{
+        padding: 0.2rem 0.5rem !important;
+        font-size: 0.9rem !important;
+        width: 100%;
+        white-space: nowrap;
+    }}
 
-    /* FILE UPLOADER CLEANUP */
-    [data-testid="stFileUploader"] section {{ padding: 0 !important; border: none !important; background-color: transparent !important; min-height: 0px !important; }}
-    [data-testid="stFileUploader"] section > div {{ padding: 0 !important; line-height: 0 !important; }}
-    [data-testid="stFileUploader"] svg, [data-testid="stFileUploader"] span, [data-testid="stFileUploader"] small {{ display: none !important; }}
-    [data-testid="stFileUploader"] button {{ margin-top: 0px !important; border: 1px solid #e0e0e0 !important; }}
+    /* --- CALENDAR NOTE --- */
+    .cal-note-container {{ padding: 8px 0; margin-bottom: 5px; border-bottom: 1px solid #eee; }}
+    .cal-note-container:last-child {{ border-bottom: none; }}
+
+    /* --- FILE UPLOADER CUSTOMIZATION --- */
+    [data-testid="stFileUploader"] {{
+        padding-top: 0px !important;
+    }}
+    [data-testid="stFileUploader"] section {{
+        padding: 0 !important;
+        border: none !important;
+        background-color: transparent !important;
+        min-height: 0px !important;
+    }}
+    /* Hide the Drag & Drop Text + Icon */
+    [data-testid="stFileUploader"] div[data-testid="stMarkdownContainer"], 
+    [data-testid="stFileUploader"] svg,
+    [data-testid="stFileUploader"] small {{
+        display: none !important;
+    }}
+    /* Style the button itself */
+    [data-testid="stFileUploader"] button {{
+        margin-top: 0px !important;
+        width: 100% !important;
+        border: 1px solid #e0e0e0 !important;
+        font-size: 0.9rem !important;
+    }}
 
     /* --- MOBILE SPECIFIC OPTIMIZATIONS --- */
     @media only screen and (max-width: 600px) {{
         
         .block-container {{ padding-top: 2rem !important; padding-left: 0.5rem !important; padding-right: 0.5rem !important; }}
 
-        /* HEADER: Force Row */
+        /* HEADER ROW */
         [data-testid="stHorizontalBlock"]:has(.dor-title) {{
             display: flex !important; flex-wrap: nowrap !important; align-items: center !important; gap: 5px !important;
         }}
@@ -142,18 +171,26 @@ st.markdown(f"""
 
         .dor-title {{ font-size: 1.5rem !important; }}
 
-        /* --- CRITICAL BUTTON ROW FIX --- */
-        /* Force columns to shrink and stay in row */
-        [data-testid="column"] {{
-            min-width: 0px !important;
+        /* --- FORCE ROW LAYOUT FOR BUTTONS & NAV --- */
+        /* Prevents stacking on mobile */
+        
+        div[data-testid="column"] {{
+            min-width: 0px !important; /* Crucial: allows columns to shrink below default */
+            flex: 1 1 auto !important; 
+            width: auto !important;
         }}
         
-        /* Reduce button padding to fit 4 in a row */
-        .stButton button {{
-            padding: 0.2rem 0rem !important;
+        /* ACTION BUTTONS (Edit/Pin/Move/Del) -> Make them fit */
+        div[data-testid="column"] .stButton button {{
+            padding: 0.2rem 0rem !important; /* Remove padding to fit text */
             font-size: 0.8rem !important;
-            line-height: 1.1 !important;
-            width: 100% !important;
+        }}
+        
+        /* Calendar Nav: Prev/Next */
+        div[data-testid="column"]:has(button:contains("Prev")),
+        div[data-testid="column"]:has(button:contains("Next")) {{
+             width: 50% !important;
+             flex: 1 1 50% !important;
         }}
     }}
 </style>
@@ -312,12 +349,12 @@ def render_create_note_form(key_suffix, date_ref=None):
             with c_tit: title = st.text_input("Title (Optional)")
             with c_lab: labels = st.text_input("Labels")
             content = st_quill(placeholder="Write here...", html=True, toolbar=toolbar_config)
-            c_file, c_btn = st.columns([3, 1])
+            
+            # SAME ROW: ATTACHMENT + SAVE
+            c_file, c_btn = st.columns([1, 1])
             with c_file:
-                f_up = st.file_uploader("Attachment (<200MB)", type=['pdf', 'docx', 'txt', 'mp3', 'wav', 'jpg', 'png'])
+                f_up = st.file_uploader("Attachment", type=['pdf', 'docx', 'txt', 'mp3', 'wav', 'jpg', 'png'], label_visibility="collapsed")
             with c_btn:
-                st.write("") 
-                st.write("") 
                 submitted = st.form_submit_button("Save Note")
             
             if submitted:
@@ -360,8 +397,10 @@ def render_create_note_form(key_suffix, date_ref=None):
         if tl == "Pencil": fc = hex_to_rgba(bc, 0.7); sw = 2 if sw > 5 else sw
         elif tl == "Highlighter": fc = hex_to_rgba(bc, 0.4); sw = 15 if sw < 10 else sw
         elif tl == "Eraser": sw = 20 if sw < 10 else sw
+        
         ckey = f"cv_{cw}_{ch}_{key_suffix}"
         res = st_canvas(fill_color="rgba(0,0,0,0)", stroke_width=sw, stroke_color=fc, background_color="#FFF", update_streamlit=True, height=ch, width=cw, drawing_mode="freedraw", key=ckey)
+        
         if st.button("Save Drawing", key=f"bs_{key_suffix}"):
             if logic_save_note(title, labels, None, None, "Drawing", res, date_ref, recur_val, stop_year_val):
                 st.toast("Saved!", icon="✅")
@@ -490,7 +529,7 @@ def open_edit_popup(note_id, old_title, old_content, old_filename, old_labels, n
             unique_key = f"quill_edit_{note_id}_{st.session_state.edit_trigger}"
             new_content = st_quill(value=safe_content, toolbar=toolbar_config, html=True, key=unique_key)
             st.divider()
-            c_file, c_space = st.columns([3, 1])
+            c_file, c_space = st.columns([2, 1])
             with c_file:
                 new_file = st.file_uploader("Replace File", type=['pdf', 'docx', 'txt', 'mp3', 'wav', 'jpg', 'png'], label_visibility="collapsed")
 
@@ -664,8 +703,8 @@ with tab_dash:
                         st.download_button("Download", data=note["file_data"], file_name=note["file_name"], key=f"dl_{note['_id']}")
                     
                     st.markdown("---")
-                    # DASHBOARD ACTIONS (4 IN A ROW - FORCED CSS)
-                    c1, c2, c3, c4 = st.columns([1, 1, 1, 1])
+                    # DASHBOARD ACTIONS (4 IN A ROW)
+                    c1, c2, c3, c4 = st.columns(4)
                     
                     if c1.button("✎", key=f"m_{note['_id']}"):
                         draw_data = note.get("drawing_json", None)
@@ -693,7 +732,7 @@ with tab_cal:
     # SEARCH IN CALENDAR
     cal_query = st.text_input("🔍", placeholder="Search in the Calendar...", label_visibility="collapsed", key="cal_search")
     
-    # CALENDAR NAV (MOBILE OPTIMIZED: M/Y Row 1, P/N Row 2)
+    # MOBILE NAV (Row 1: M/Y, Row 2: Prev/Next)
     c_sel_m, c_sel_y = st.columns(2)
     with c_sel_m:
         month_names = list(calendar.month_name)[1:]
@@ -773,7 +812,6 @@ with tab_cal:
         dt = date(st.session_state.cal_year, st.session_state.cal_month, day)
         day_name = dt.strftime("%A, %d %B %Y")
         
-        # DEFAULT NOTE CHECK
         has_default = False
         if date_str in notes_by_day:
             for n in notes_by_day[date_str]:
@@ -830,8 +868,8 @@ with tab_cal:
                     if note.get("file_name") and note.get("tipo") != "disegno":
                         st.download_button("Download", data=note["file_data"], file_name=note["file_name"], key=f"dlc_{note['_id']}")
                     
-                    # CALENDAR BUTTONS (Edit, Copy, Delete) - Compact Left
-                    c1, c2, c3, c_space = st.columns([1, 1, 1, 4])
+                    # CALENDAR BUTTONS (Mobile: 3 in row)
+                    c1, c2, c3 = st.columns(3)
                     
                     if c1.button("✎", key=f"ced_{note['_id']}"): # Only Icon
                         draw_data = note.get("drawing_json", None)
@@ -881,4 +919,3 @@ with tab_cal:
                     st.rerun()
         
         st.markdown("<hr style='margin: 15px 0; border-top: 2px solid #888; opacity: 1;'>", unsafe_allow_html=True)
-        

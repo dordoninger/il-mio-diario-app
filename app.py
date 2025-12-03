@@ -35,7 +35,7 @@ if 'reset_counter' not in st.session_state: st.session_state.reset_counter = 0
 # --- 3. CSS AESTHETIC ---
 st.markdown(f"""
 <style>
-    /* TITLE STYLE */
+    /* MAIN TITLE STYLE */
     .dor-title {{
         font-family: 'Helvetica Neue', 'Helvetica', 'Arial', sans-serif;
         font-weight: 300;
@@ -46,6 +46,20 @@ st.markdown(f"""
         text-transform: uppercase;
         margin-top: 10px;
         margin-bottom: 0px;
+    }}
+
+    /* SECTION HEADERS (RESTORED THIN FONT) */
+    .section-header {{
+        font-family: 'Helvetica Neue', 'Helvetica', 'Arial', sans-serif;
+        font-weight: 300; /* THIN 300 - RESTORED */
+        font-size: 1.4rem;
+        color: #000;
+        margin-top: 30px;
+        margin-bottom: 15px;
+        border-bottom: 2px solid #888; /* Dark line */
+        padding-bottom: 8px;
+        letter-spacing: 2px; /* Spaced */
+        text-transform: uppercase;
     }}
 
     /* EXPANDER STYLE */
@@ -141,20 +155,6 @@ st.markdown(f"""
     }}
     
     div[data-testid="column"] {{ display: flex; align-items: center; }}
-    
-    /* PINNED HEADER */
-    .pinned-header {{
-        font-family: 'Helvetica Neue', 'Helvetica', 'Arial', sans-serif;
-        font-weight: 600;
-        font-size: 1.5rem;
-        color: #000;
-        margin-top: 30px;
-        margin-bottom: 15px;
-        border-bottom: 2px solid #888;
-        padding-bottom: 8px;
-        letter-spacing: 0.5px;
-        text-transform: uppercase;
-    }}
     
     /* CALENDAR DAY NOTE */
     .cal-note-container {{
@@ -378,9 +378,10 @@ def open_settings():
     if size_opt != st.session_state.text_size:
         st.session_state.text_size = size_opt
         st.rerun()
+    
     st.divider()
     
-    # STATISTICS MOVED HERE
+    # STATISTICS (MOVED & RENAMED)
     st.write("**Statistics**")
     all_notes_stat = list(collection.find({}))
     total_count = len(all_notes_stat)
@@ -388,7 +389,6 @@ def open_settings():
     cal_count = len([n for n in all_notes_stat if n.get('calendar_date') and not n.get('deleted')])
     trash_count = len([n for n in all_notes_stat if n.get('deleted')])
     
-    # Memory Estimate
     total_size_bytes = 0
     for n in all_notes_stat:
         total_size_bytes += len(str(n))

@@ -36,12 +36,10 @@ if 'reset_counter' not in st.session_state: st.session_state.reset_counter = 0
 if 'canvas_w' not in st.session_state: st.session_state.canvas_w = 600
 if 'canvas_h' not in st.session_state: st.session_state.canvas_h = 400
 
-# --- 3. JAVASCRIPT SWIPE (PARENT WINDOW FIX) ---
+# --- 3. JAVASCRIPT SWIPE ---
 swipe_js = """
 <script>
-    // Attach listener to the PARENT window (the browser frame), not just the iframe
     var doc = window.parent.document;
-    
     doc.addEventListener('touchstart', handleTouchStart, false);
     doc.addEventListener('touchmove', handleTouchMove, false);
 
@@ -56,28 +54,17 @@ swipe_js = """
 
     function handleTouchMove(evt) {
         if (!xDown || !yDown) { return; }
-
         var xUp = evt.touches[0].clientX;
         var yUp = evt.touches[0].clientY;
-
         var xDiff = xDown - xUp;
         var yDiff = yDown - yUp;
 
-        // Detect horizontal swipe
         if (Math.abs(xDiff) > Math.abs(yDiff)) { 
-            // Find Streamlit Tabs (buttons with data-baseweb="tab")
             var tabs = doc.querySelectorAll('button[data-baseweb="tab"]');
             if (tabs.length >= 2) {
-                if (xDiff > 0) {
-                    // Left Swipe -> Go to Calendar (Tab index 1)
-                    tabs[1].click(); 
-                } else {
-                    // Right Swipe -> Go to Dashboard (Tab index 0)
-                    tabs[0].click();
-                }
+                if (xDiff > 0) { tabs[1].click(); } else { tabs[0].click(); }
             }
         }
-        // Reset values
         xDown = null;
         yDown = null;
     };
@@ -88,11 +75,11 @@ st.components.v1.html(swipe_js, height=0)
 # --- 4. CSS AESTHETIC & MOBILE OPTIMIZATION ---
 st.markdown(f"""
 <style>
-    /* --- ANIMATION FOR INTRO SPLASH --- */
-    @keyframes tracking-in-expand {{
-        0% {{ letter-spacing: -0.5em; opacity: 0; }}
+    /* --- 1. ANIMATION: FROM FAR TO NEAR --- */
+    @keyframes tracking-in-contract {{
+        0% {{ letter-spacing: 15px; opacity: 0; }}
         40% {{ opacity: 0.6; }}
-        100% {{ opacity: 1; }}
+        100% {{ letter-spacing: 4px; opacity: 1; }}
     }}
     
     .splash-text {{
@@ -102,9 +89,8 @@ st.markdown(f"""
         color: black;
         text-align: center;
         text-transform: uppercase;
-        letter-spacing: 4px;
         margin-top: 35vh;
-        animation: tracking-in-expand 1.2s cubic-bezier(0.215, 0.610, 0.355, 1.000) both;
+        animation: tracking-in-contract 1.5s cubic-bezier(0.215, 0.610, 0.355, 1.000) both;
     }}
 
     /* --- GLOBAL STYLES --- */
@@ -116,7 +102,6 @@ st.markdown(f"""
         margin-top: 0px; margin-bottom: 0px;
         white-space: nowrap;
         line-height: 1.2;
-        /* No animation here, static title */
     }}
 
     .section-header {{
@@ -183,66 +168,55 @@ st.markdown(f"""
     [data-testid="stFileUploader"] svg, [data-testid="stFileUploader"] span, [data-testid="stFileUploader"] small {{ display: none !important; }}
     [data-testid="stFileUploader"] button {{ margin-top: 0px !important; border: 1px solid #e0e0e0 !important; }}
 
-    /* --- MOBILE SPECIFIC OPTIMIZATIONS (@media) --- */
+    /* --- MOBILE SPECIFIC OPTIMIZATIONS --- */
     @media only screen and (max-width: 600px) {{
         
-        /* Reduce Main Padding */
-        .block-container {{
-            padding-top: 2rem !important;
-            padding-left: 0.5rem !important;
-            padding-right: 0.5rem !important;
-        }}
+        .block-container {{ padding-top: 2rem !important; padding-left: 0.5rem !important; padding-right: 0.5rem !important; }}
 
-        /* HEADER: Force Row */
+        /* HEADER */
         [data-testid="stHorizontalBlock"]:has(.dor-title) {{
-            display: flex !important;
-            flex-wrap: nowrap !important;
-            align-items: center !important;
-            gap: 5px !important;
+            display: flex !important; flex-wrap: nowrap !important; align-items: center !important; gap: 5px !important;
         }}
-        [data-testid="stHorizontalBlock"]:has(.dor-title) > div:nth-child(1) {{
-            flex: 8 !important; min-width: 0 !important;
-        }}
+        [data-testid="stHorizontalBlock"]:has(.dor-title) > div:nth-child(1) {{ flex: 8 !important; min-width: 0 !important; }}
         [data-testid="stHorizontalBlock"]:has(.dor-title) > div:nth-child(2),
-        [data-testid="stHorizontalBlock"]:has(.dor-title) > div:nth-child(3) {{
-            flex: 1 !important; min-width: 35px !important;
-        }}
+        [data-testid="stHorizontalBlock"]:has(.dor-title) > div:nth-child(3) {{ flex: 0 0 auto !important; width: 40px !important; min-width: 40px !important; }}
 
-        .dor-title {{ font-size: 1.6rem !important; }}
+        .dor-title {{ font-size: 1.5rem !important; }}
         
-        /* GRID NOTES: 2 Columns */
-        [data-testid="column"]:not(:has(.stButton)):not(:has(.stTextInput)) {{
-            width: 50% !important;
-            flex: 1 1 50% !important;
-        }}
-
-        /* DASHBOARD ACTION BUTTONS: Force 4 in a row */
-        /* We target the columns strictly INSIDE an Expander */
-        div[data-testid="stExpander"] div[data-testid="column"] {{
+        /* --- 3. BUTTONS IN ROW FIX (FORCE NO WRAP & MIN-WIDTH 0) --- */
+        
+        /* Force the horizontal block inside expander to be a row */
+        [data-testid="stExpander"] [data-testid="stHorizontalBlock"] {
+            flex-wrap: nowrap !important;
+            gap: 2px !important;
+        }
+        
+        /* Force columns inside expander to shrink */
+        [data-testid="stExpander"] [data-testid="column"] {
             width: 25% !important;
-            flex: 1 1 25% !important;
-            min-width: 0 !important;
+            flex: 1 1 0 !important; /* Flex grow 1, shrink 1, basis 0 */
+            min-width: 0px !important; /* Crucial override */
             padding: 0 1px !important;
-        }}
+        }
         
-        /* Reduce button padding specifically for these small buttons */
-        div[data-testid="stExpander"] .stButton button {{
-            padding-left: 0px !important;
-            padding-right: 0px !important;
-            font-size: 0.8rem !important;
-        }}
+        /* Make button text smaller to fit */
+        [data-testid="stExpander"] .stButton button {
+            padding: 0.2rem 0rem !important;
+            font-size: 0.7rem !important;
+            white-space: nowrap !important;
+            overflow: hidden !important;
+        }
     }}
 </style>
 """, unsafe_allow_html=True)
 
-# --- 5. INIT SPLASH SCREEN & DB ---
+# --- 5. INIT & DB ---
 if 'first_load' not in st.session_state:
-    # EMPTY CONTAINER FOR SPLASH
     splash = st.empty()
     with splash.container():
         st.markdown("<div class='splash-text'>DOR NOTES</div>", unsafe_allow_html=True)
-        time.sleep(1.5) # Animation time
-    splash.empty() # Remove splash
+        time.sleep(1.5)
+    splash.empty()
     st.session_state['first_load'] = True
 
 if 'editor_key' not in st.session_state:
@@ -389,7 +363,6 @@ def render_create_note_form(key_suffix, date_ref=None):
             with c_tit: title = st.text_input("Title (Optional)")
             with c_lab: labels = st.text_input("Labels")
             content = st_quill(placeholder="Write here...", html=True, toolbar=toolbar_config)
-            
             c_file, c_btn = st.columns([3, 1])
             with c_file:
                 f_up = st.file_uploader("Attachment (<200MB)", type=['pdf', 'docx', 'txt', 'mp3', 'wav', 'jpg', 'png'])
@@ -441,7 +414,6 @@ def render_create_note_form(key_suffix, date_ref=None):
         
         ckey = f"cv_{cw}_{ch}_{key_suffix}"
         res = st_canvas(fill_color="rgba(0,0,0,0)", stroke_width=sw, stroke_color=fc, background_color="#FFF", update_streamlit=True, height=ch, width=cw, drawing_mode="freedraw", key=ckey)
-        
         if st.button("Save Drawing", key=f"bs_{key_suffix}"):
             if logic_save_note(title, labels, None, None, "Drawing", res, date_ref, recur_val, stop_year_val):
                 st.toast("Saved!", icon="✅")
@@ -488,7 +460,6 @@ def open_settings():
     c1.metric("Total Notes", total_count)
     c2.metric("Dashboard", dash_count)
     c3.metric("Calendar", cal_count)
-    
     st.metric("Trash", trash_count)
     st.write(f"**Storage Used:** {size_mb:.2f} MB / 512 MB")
     st.progress(min(percentage / 100, 1.0))
@@ -545,7 +516,6 @@ def open_edit_popup(note_id, old_title, old_content, old_filename, old_labels, n
             except: pass
 
         safe_content = flatten_formulas_to_text(old_content)
-        
         canvas_result = None
         new_file = None
         new_content = safe_content
@@ -578,7 +548,6 @@ def open_edit_popup(note_id, old_title, old_content, old_filename, old_labels, n
         if st.form_submit_button("Save Changes", type="primary"):
             labels_list = [tag.strip() for tag in new_labels_str.split(",") if tag.strip()]
             update_data = {"titolo": new_title, "labels": labels_list, "data": datetime.now()}
-            
             if new_date_str: update_data["calendar_date"] = new_date_str
 
             if note_type == "disegno":
@@ -745,17 +714,19 @@ with tab_dash:
                         st.download_button("Download", data=note["file_data"], file_name=note["file_name"], key=f"dl_{note['_id']}")
                     
                     st.markdown("---")
-                    c_mod, c_pin, c_move, c_del = st.columns(4)
-                    if c_mod.button("✎", key=f"m_{note['_id']}"):
+                    # ACTIONS: 4 IN A ROW ON MOBILE
+                    c1, c2, c3, c4 = st.columns(4)
+                    
+                    if c1.button("✎", key=f"m_{note['_id']}"):
                         draw_data = note.get("drawing_json", None)
                         open_edit_popup(note['_id'], note['titolo'], note['contenuto'], note.get("file_name"), labels, note.get("tipo"), draw_data)
                     
                     label_pin = "⚲"
-                    if c_pin.button(label_pin, key=f"p_{note['_id']}"):
+                    if c2.button(label_pin, key=f"p_{note['_id']}"):
                          collection.update_one({"_id": note['_id']}, {"$set": {"pinned": not note.get("pinned", False)}})
                          st.rerun()
-                    if c_move.button("⇄", key=f"mv_{note['_id']}"): open_move_popup(note['_id'])
-                    if c_del.button("🗑", key=f"d_{note['_id']}"): confirm_deletion(note['_id'])
+                    if c3.button("⇄", key=f"mv_{note['_id']}"): open_move_popup(note['_id'])
+                    if c4.button("🗑", key=f"d_{note['_id']}"): confirm_deletion(note['_id'])
 
     if not all_notes: st.info("No dashboard notes.")
     else:
@@ -910,6 +881,7 @@ with tab_cal:
                     if note.get("file_name") and note.get("tipo") != "disegno":
                         st.download_button("Download", data=note["file_data"], file_name=note["file_name"], key=f"dlc_{note['_id']}")
                     
+                    # CALENDAR BUTTONS (Mobile optimized)
                     c1, c2, c3, c_space = st.columns([0.8, 0.8, 0.8, 6])
                     
                     if c1.button("✎", key=f"ced_{note['_id']}"): # Only Icon
@@ -955,6 +927,7 @@ with tab_cal:
                     st.rerun()
         else:
             with c_add:
+                # UPDATED ADD BUTTON
                 if st.button("+ Add Note", key=f"add_{date_str}"):
                     st.session_state.cal_create_date = date_str
                     st.rerun()

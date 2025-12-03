@@ -35,7 +35,7 @@ if 'reset_counter' not in st.session_state: st.session_state.reset_counter = 0
 # --- 3. CSS AESTHETIC ---
 st.markdown(f"""
 <style>
-    /* MAIN TITLE STYLE */
+    /* TITLE STYLE */
     .dor-title {{
         font-family: 'Helvetica Neue', 'Helvetica', 'Arial', sans-serif;
         font-weight: 300;
@@ -46,20 +46,6 @@ st.markdown(f"""
         text-transform: uppercase;
         margin-top: 10px;
         margin-bottom: 0px;
-    }}
-
-    /* SECTION HEADERS (PINNED, ALL NOTES, DAYS) - MATCHING TITLE STYLE */
-    .section-header {{
-        font-family: 'Helvetica Neue', 'Helvetica', 'Arial', sans-serif;
-        font-weight: 300; /* THIN LIKE TITLE */
-        font-size: 1.4rem;
-        color: #000;
-        margin-top: 25px;
-        margin-bottom: 10px;
-        border-bottom: 2px solid #888; /* DARK DEFINED LINE */
-        padding-bottom: 5px;
-        letter-spacing: 2px; /* SPACED OUT */
-        text-transform: uppercase; /* UPPERCASE */
     }}
 
     /* EXPANDER STYLE */
@@ -152,6 +138,20 @@ st.markdown(f"""
     }}
     
     div[data-testid="column"] {{ display: flex; align-items: center; }}
+    
+    /* PINNED HEADER */
+    .pinned-header {{
+        font-family: 'Helvetica Neue', 'Helvetica', 'Arial', sans-serif;
+        font-weight: 300;
+        font-size: 1.5rem;
+        color: #000;
+        margin-top: 30px;
+        margin-bottom: 15px;
+        border-bottom: 2px solid #888;
+        padding-bottom: 8px;
+        letter-spacing: 0.5px;
+        text-transform: uppercase;
+    }}
     
     /* CALENDAR DAY NOTE */
     .cal-note-container {{
@@ -366,6 +366,33 @@ def render_create_note_form(key_suffix, date_ref=None):
 
 @st.dialog("Settings")
 def open_settings():
+    # ANALYTICS
+    st.write("**📊 Statistics**")
+    all_notes_stat = list(collection.find({}))
+    total_count = len(all_notes_stat)
+    dash_count = len([n for n in all_notes_stat if not n.get('calendar_date') and not n.get('deleted')])
+    cal_count = len([n for n in all_notes_stat if n.get('calendar_date') and not n.get('deleted')])
+    trash_count = len([n for n in all_notes_stat if n.get('deleted')])
+    
+    # Memory Estimate (Approximation)
+    total_size_bytes = 0
+    for n in all_notes_stat:
+        total_size_bytes += len(str(n)) # Rough text size
+        if n.get("file_data"): total_size_bytes += len(n["file_data"])
+    
+    size_mb = total_size_bytes / (1024 * 1024)
+    percentage = (size_mb / 512) * 100 # 512MB limit
+    
+    c1, c2, c3 = st.columns(3)
+    c1.metric("Total Notes", total_count)
+    c2.metric("Dashboard", dash_count)
+    c3.metric("Calendar", cal_count)
+    
+    st.metric("Trash", trash_count)
+    st.write(f"**Storage Used:** {size_mb:.2f} MB / 512 MB")
+    st.progress(min(percentage / 100, 1.0))
+    
+    st.divider()
     st.write("**Appearance**")
     cols_opt = st.slider("Grid Columns", min_value=1, max_value=5, value=st.session_state.grid_cols)
     if cols_opt != st.session_state.grid_cols:
@@ -377,15 +404,7 @@ def open_settings():
         st.rerun()
     st.divider()
     st.write("**Data**")
-    all_notes = list(collection.find({}))
-    
-    # STATISTICS
-    n_total = len(all_notes)
-    n_dash = len([n for n in all_notes if not n.get('calendar_date') and not n.get('deleted')])
-    n_cal = len([n for n in all_notes if n.get('calendar_date') and not n.get('deleted')])
-    st.caption(f"Total Notes: {n_total} (Dash: {n_dash}, Cal: {n_cal})")
-
-    json_data = convert_notes_to_json(all_notes)
+    json_data = convert_notes_to_json(all_notes_stat)
     st.download_button("Download Backup (.json)", data=json_data, file_name=f"backup_{datetime.now().strftime('%Y%m%d')}.json", mime="application/json")
     
     # RESTORE
@@ -408,7 +427,6 @@ def open_settings():
             except Exception as e:
                 st.error(f"Error restoring: {e}")
 
-    st.divider()
     st.write("**Maintenance**")
     is_auto = st.toggle("Auto-delete items older than 30 days", value=st.session_state.auto_clean_enabled)
     if is_auto != st.session_state.auto_clean_enabled:
@@ -419,7 +437,7 @@ def open_settings():
             st.toast(f"Auto-cleaned {res.deleted_count} items")
 
 @st.dialog("Edit Note", width="large")
-def open_edit_popup(note_id, old_title, old_content, old_filename, old_labels, note_type, drawing_data=None, date_ref=None):
+def open_edit_popup(note_id, old_title, old_content, old_filename, old_labels, note_type, drawing_data=None, date_ref=None, is_default=False):
     st.markdown("### Edit Content")
     labels_str = ", ".join(old_labels) if old_labels else ""
     
@@ -428,7 +446,8 @@ def open_edit_popup(note_id, old_title, old_content, old_filename, old_labels, n
         new_labels_str = st.text_input("Labels", value=labels_str)
         
         new_date_str = None
-        if date_ref:
+        # FIX: ADDED is_default CHECK HERE TO PREVENT MOVING DEFAULT NOTES
+        if date_ref and not is_default:
             try:
                 curr_date = datetime.strptime(date_ref, "%Y-%m-%d").date()
                 new_date = st.date_input("Date (Move)", value=curr_date)
@@ -649,10 +668,10 @@ with tab_dash:
     if not all_notes: st.info("No dashboard notes.")
     else:
         if pinned_notes:
-            st.markdown("<div class='section-header'>Pinned Notes</div>", unsafe_allow_html=True) # NEW STYLE
+            st.markdown("<div class='pinned-header'>Pinned Notes</div>", unsafe_allow_html=True)
             render_dash_grid(pinned_notes)
             st.write("") 
-            st.markdown("<div class='section-header'>All Notes</div>", unsafe_allow_html=True) # NEW STYLE
+            st.markdown("<div class='pinned-header'>All Notes</div>", unsafe_allow_html=True)
         render_dash_grid(other_notes)
 
 # ================= CALENDAR TAB =================
@@ -703,7 +722,7 @@ with tab_cal:
     start_date_str = f"{st.session_state.cal_year}-{st.session_state.cal_month:02d}-01"
     end_date_str = f"{st.session_state.cal_year}-{st.session_state.cal_month:02d}-{num_days}"
     
-    # FILTER CALENDAR QUERIES
+    # FILTER QUERIES WITH SEARCH
     q_reg = {"calendar_date": {"$gte": start_date_str, "$lte": end_date_str}, "deleted": {"$ne": True}}
     q_rec = {"deleted": {"$ne": True}, "recurrence": "yearly", "cal_month": st.session_state.cal_month, "$or": [{"recur_end_year": None}, {"recur_end_year": {"$gt": st.session_state.cal_year}}]}
     
@@ -740,7 +759,7 @@ with tab_cal:
     for day in range(1, num_days + 1):
         date_str = f"{st.session_state.cal_year}-{st.session_state.cal_month:02d}-{day:02d}"
         dt = date(st.session_state.cal_year, st.session_state.cal_month, day)
-        day_name = dt.strftime("%A, %d %B %Y") # UPDATED FORMAT WITH YEAR
+        day_name = dt.strftime("%A, %d %B %Y")
         
         # DEFAULT NOTE CHECK
         has_default = False
@@ -750,7 +769,7 @@ with tab_cal:
                     has_default = True
                     break
         
-        if not has_default and not cal_query: # Don't create during search
+        if not has_default and not cal_query: 
             def_doc = {
                 "titolo": "Compiti del giorno",
                 "contenuto": "",
@@ -767,9 +786,8 @@ with tab_cal:
             notes_by_day[date_str].insert(0, def_doc)
 
         notes_today = notes_by_day.get(date_str, [])
-        if cal_query and not notes_today: continue # Skip day if empty during search
+        if cal_query and not notes_today: continue
 
-        # USE NEW HEADER CLASS FOR DAYS
         st.markdown(f"<div class='section-header'>{day_name}</div>", unsafe_allow_html=True) 
         
         notes_today.sort(key=lambda x: x.get('custom_order', 0))
@@ -800,7 +818,6 @@ with tab_cal:
                     if note.get("file_name") and note.get("tipo") != "disegno":
                         st.download_button("Download", data=note["file_data"], file_name=note["file_name"], key=f"dlc_{note['_id']}")
                     
-                    # CALENDAR BUTTONS
                     c1, c2, c3, c_space = st.columns([0.8, 0.8, 0.8, 6])
                     
                     if c1.button("✎", key=f"ced_{note['_id']}"): # Only Icon
@@ -846,7 +863,6 @@ with tab_cal:
                     st.rerun()
         else:
             with c_add:
-                # UPDATED ADD BUTTON
                 if st.button("+ Add Note", key=f"add_{date_str}"):
                     st.session_state.cal_create_date = date_str
                     st.rerun()

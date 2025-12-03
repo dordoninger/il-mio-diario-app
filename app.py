@@ -161,7 +161,7 @@ st.markdown(f"""
         
         .block-container {{ padding-top: 2rem !important; padding-left: 0.5rem !important; padding-right: 0.5rem !important; }}
 
-        /* HEADER ROW */
+        /* HEADER ROW FIX */
         [data-testid="stHorizontalBlock"]:has(.dor-title) {{
             display: flex !important; flex-wrap: nowrap !important; align-items: center !important; gap: 5px !important;
         }}
@@ -171,31 +171,33 @@ st.markdown(f"""
 
         .dor-title {{ font-size: 1.5rem !important; }}
 
-        /* --- FORCE ROW LAYOUT FOR ACTION BUTTONS --- */
+        /* --- COLUMNS BEHAVIOR ON MOBILE --- */
+        /* Crucial: We allow columns to shrink to 0 width. 
+           This prevents the 'wrapping' of buttons when they are small.
+           We do NOT force 'nowrap' globally, so large grid items (Dashboard notes) 
+           can still stack vertically if Streamlit wants them to.
+        */
+        div[data-testid="column"] {{
+            min-width: 0px !important;
+            flex: 1 1 0px !important; /* Forces equal width distribution */
+        }}
         
-        /* 1. Force the container of columns to stay in a row (no wrapping) */
+        /* Reduce gap between columns to fit 4 buttons */
         [data-testid="stHorizontalBlock"] {{
-            flex-wrap: nowrap !important;
-            gap: 4px !important; /* Reduce gap between buttons */
+            gap: 0.3rem !important;
         }}
 
-        /* 2. Force the columns themselves to shrink and share space */
-        div[data-testid="column"] {{
-            min-width: 0px !important; 
-            flex: 1 1 auto !important; 
-            width: auto !important;
-        }}
-        
-        /* 3. Style the buttons to fit in the tight space */
+        /* --- BUTTONS IN MOBILE --- */
+        /* Remove padding to allow 4 buttons to fit side-by-side */
         div[data-testid="column"] .stButton button {{
-            padding-left: 0px !important;
-            padding-right: 0px !important;
-            font-size: 1.1rem !important; /* Slightly larger emoji */
+            padding: 0px !important;
             margin: 0px !important;
+            font-size: 1.0rem !important;
             min-height: 38px !important;
         }}
         
-        /* Calendar Nav: Prev/Next - Give them a bit more space than the tiny action buttons */
+        /* Specific Fix for Calendar Nav Buttons (Prev/Next) */
+        /* Because we forced min-width 0, we want these to stay 50/50 */
         div[data-testid="column"]:has(button:contains("Prev")),
         div[data-testid="column"]:has(button:contains("Next")) {{
              flex: 1 1 50% !important;
@@ -712,7 +714,7 @@ with tab_dash:
                     
                     st.markdown("---")
                     # DASHBOARD ACTIONS (4 IN A ROW)
-                    # Modified for mobile: using explicit list [1,1,1,1] helps Streamlit respect flex logic
+                    # Modified: equal weighting for columns to assist CSS in even distribution
                     c1, c2, c3, c4 = st.columns([1, 1, 1, 1])
                     
                     if c1.button("✎", key=f"m_{note['_id']}"):
@@ -878,7 +880,7 @@ with tab_cal:
                         st.download_button("Download", data=note["file_data"], file_name=note["file_name"], key=f"dlc_{note['_id']}")
                     
                     # CALENDAR BUTTONS (Mobile: 3 in row)
-                    # Modified for mobile: using explicit list [1,1,1] helps Streamlit respect flex logic
+                    # Modified: equal weighting for columns to assist CSS in even distribution
                     c1, c2, c3 = st.columns([1, 1, 1])
                     
                     if c1.button("✎", key=f"ced_{note['_id']}"): # Only Icon

@@ -101,13 +101,20 @@ st.markdown(f"""
         text-transform: uppercase;
     }}
 
-    /* BLACK BORDER FIX */
+    /* --- BLACK BORDER FIX (ALL INPUTS + SELECTBOX) --- */
     div[data-baseweb="input"] {{ border-color: #e0e0e0 !important; border-radius: 8px !important; }}
     div[data-baseweb="input"]:focus-within {{ border: 1px solid #333333 !important; box-shadow: none !important; }}
+    
     div[data-baseweb="textarea"] {{ border-color: #e0e0e0 !important; border-radius: 8px !important; }}
     div[data-baseweb="textarea"]:focus-within {{ border: 1px solid #333333 !important; box-shadow: none !important; }}
+    
     div[data-testid="stNumberInput"] > div > div {{ border-color: #e0e0e0 !important; border-radius: 8px !important; }}
     div[data-testid="stNumberInput"] > div > div:focus-within {{ border: 1px solid #333333 !important; box-shadow: none !important; }}
+    
+    /* SELECTBOX (DROPDOWN) FIX */
+    div[data-baseweb="select"] > div {{ border-color: #e0e0e0 !important; border-radius: 8px !important; }}
+    div[data-baseweb="select"] > div:focus-within {{ border-color: #000000 !important; box-shadow: 0 0 0 1px #000000 !important; }}
+    
     input:focus {{ outline: none !important; border-color: #000000 !important; }}
 
     /* BUTTON COMPACT STYLE */
@@ -137,17 +144,17 @@ st.markdown(f"""
     
     div[data-testid="column"] {{ display: flex; align-items: center; }}
     
-    /* PINNED HEADER */
+    /* PINNED & ALL NOTES HEADER (BIGGER & DARK LINE) */
     .pinned-header {{
         font-family: 'Helvetica Neue', 'Helvetica', 'Arial', sans-serif;
-        font-weight: 300;
-        font-size: 1.1rem;
+        font-weight: 600;
+        font-size: 1.5rem;
         color: #000;
-        margin-top: 20px;
-        margin-bottom: 10px;
-        border-bottom: 1px solid #eee;
-        padding-bottom: 5px;
-        letter-spacing: 1px;
+        margin-top: 30px;
+        margin-bottom: 15px;
+        border-bottom: 2px solid #888; /* DARK LINE LIKE CALENDAR */
+        padding-bottom: 8px;
+        letter-spacing: 0.5px;
     }}
     
     /* CALENDAR DAY NOTE */
@@ -387,7 +394,7 @@ def open_settings():
             st.toast(f"Auto-cleaned {res.deleted_count} items")
 
 @st.dialog("Edit Note", width="large")
-def open_edit_popup(note_id, old_title, old_content, old_filename, old_labels, note_type, drawing_data=None, date_ref=None, is_default=False):
+def open_edit_popup(note_id, old_title, old_content, old_filename, old_labels, note_type, drawing_data=None, date_ref=None):
     st.markdown("### Edit Content")
     labels_str = ", ".join(old_labels) if old_labels else ""
     
@@ -396,15 +403,13 @@ def open_edit_popup(note_id, old_title, old_content, old_filename, old_labels, n
         new_labels_str = st.text_input("Labels", value=labels_str)
         
         new_date_str = None
-        # ONLY SHOW DATE INPUT IF IT'S A CALENDAR NOTE AND NOT DEFAULT
-        if date_ref and not is_default:
+        if date_ref:
             try:
                 curr_date = datetime.strptime(date_ref, "%Y-%m-%d").date()
                 new_date = st.date_input("Date (Move)", value=curr_date)
                 new_date_str = str(new_date)
             except: pass
 
-        # CLEAN FORMULAS
         safe_content = flatten_formulas_to_text(old_content)
         
         canvas_result = None
@@ -557,7 +562,7 @@ with tab_dash:
         render_create_note_form("dash_create") 
 
     st.write("")
-    query = st.text_input("🔍", placeholder="Search Dashboard...", label_visibility="collapsed", key="dash_search")
+    query = st.text_input("🔍", placeholder="Search in the Dashboard...", label_visibility="collapsed", key="dash_search")
 
     filter_query = {"deleted": {"$ne": True}, "calendar_date": None}
     if query:
@@ -627,6 +632,10 @@ with tab_dash:
 
 # ================= CALENDAR TAB =================
 with tab_cal:
+    
+    # SEARCH IN CALENDAR (NEW)
+    cal_query = st.text_input("🔍", placeholder="Search in the Calendar...", label_visibility="collapsed", key="cal_search")
+    
     c_prev, c_sel_m, c_sel_y, c_next = st.columns([1, 2, 2, 1])
     
     with c_prev:
@@ -662,7 +671,6 @@ with tab_cal:
             st.session_state.cal_year = sel_year
             st.rerun()
 
-    # DARKER LINE ABOVE DAYS
     st.markdown("<hr style='margin: 15px 0; border-top: 2px solid #888; opacity: 1;'>", unsafe_allow_html=True)
 
     num_days = calendar.monthrange(st.session_state.cal_year, st.session_state.cal_month)[1]
@@ -670,17 +678,21 @@ with tab_cal:
     start_date_str = f"{st.session_state.cal_year}-{st.session_state.cal_month:02d}-01"
     end_date_str = f"{st.session_state.cal_year}-{st.session_state.cal_month:02d}-{num_days}"
     
-    month_notes_reg = list(collection.find({
-        "calendar_date": {"$gte": start_date_str, "$lte": end_date_str},
-        "deleted": {"$ne": True}
-    }))
+    # FILTER QUERIES WITH SEARCH
+    q_reg = {"calendar_date": {"$gte": start_date_str, "$lte": end_date_str}, "deleted": {"$ne": True}}
+    q_rec = {"deleted": {"$ne": True}, "recurrence": "yearly", "cal_month": st.session_state.cal_month, "$or": [{"recur_end_year": None}, {"recur_end_year": {"$gt": st.session_state.cal_year}}]}
     
-    month_notes_rec = list(collection.find({
-        "recurrence": "yearly",
-        "cal_month": st.session_state.cal_month,
-        "deleted": {"$ne": True},
-        "$or": [{"recur_end_year": None}, {"recur_end_year": {"$gt": st.session_state.cal_year}}]
-    }))
+    if cal_query:
+        search_filter = {"$or": [
+            {"titolo": {"$regex": cal_query, "$options": "i"}},
+            {"contenuto": {"$regex": cal_query, "$options": "i"}},
+            {"labels": {"$regex": cal_query, "$options": "i"}}
+        ]}
+        q_reg.update(search_filter)
+        q_rec.update(search_filter)
+
+    month_notes_reg = list(collection.find(q_reg))
+    month_notes_rec = list(collection.find(q_rec))
     
     valid_recurring = []
     reg_ids = {str(n["_id"]) for n in month_notes_reg}
@@ -699,7 +711,7 @@ with tab_cal:
              d = n["calendar_date"]
         if d not in notes_by_day: notes_by_day[d] = []
         notes_by_day[d].append(n)
-
+    
     for day in range(1, num_days + 1):
         date_str = f"{st.session_state.cal_year}-{st.session_state.cal_month:02d}-{day:02d}"
         dt = date(st.session_state.cal_year, st.session_state.cal_month, day)
@@ -713,7 +725,7 @@ with tab_cal:
                     has_default = True
                     break
         
-        if not has_default:
+        if not has_default and not cal_query: # Don't auto-create during search to keep view clean
             def_doc = {
                 "titolo": "Compiti del giorno",
                 "contenuto": "",
@@ -729,9 +741,13 @@ with tab_cal:
             if date_str not in notes_by_day: notes_by_day[date_str] = []
             notes_by_day[date_str].insert(0, def_doc)
 
+        # Only show day if it has notes (when searching) OR if not searching (show all days)
+        notes_today = notes_by_day.get(date_str, [])
+        if cal_query and not notes_today:
+            continue
+
         st.markdown(f"#### {day_name}", unsafe_allow_html=True) 
         
-        notes_today = notes_by_day.get(date_str, [])
         notes_today.sort(key=lambda x: x.get('custom_order', 0))
         
         if notes_today:
@@ -760,19 +776,19 @@ with tab_cal:
                     if note.get("file_name") and note.get("tipo") != "disegno":
                         st.download_button("Download", data=note["file_data"], file_name=note["file_name"], key=f"dlc_{note['_id']}")
                     
-                    # BUTTONS (Compact Ratio: 0.8, 0.8, 0.8, 6)
-                    c1, c2, c3, c_space = st.columns([0.8, 0.8, 0.8, 6])
+                    # CALENDAR BUTTONS (Edit, Copy, Delete) - Compact Left
+                    c1, c2, c3, c_space = st.columns([1, 1, 1, 6])
                     
-                    if c1.button("✎", key=f"ced_{note['_id']}", help="Edit"):
+                    if c1.button("✎", key=f"ced_{note['_id']}"): # Only Icon
                         draw_data = note.get("drawing_json", None)
                         open_edit_popup(note['_id'], note['titolo'], note['contenuto'], note.get("file_name"), note.get("labels", []), note.get("tipo"), draw_data, date_ref=date_str, is_default=note.get('is_default', False))
                     
-                    if c2.button("❐", key=f"ccp_{note['_id']}", help="Copy"):
+                    if c2.button("❐", key=f"ccp_{note['_id']}"): # Only Icon
                         st.session_state.cal_copy_id = note['_id']
                         st.rerun()
 
                     if not note.get('is_default'):
-                        if c3.button("🗑", key=f"cdel_{note['_id']}", help="Delete"):
+                        if c3.button("🗑", key=f"cdel_{note['_id']}"): # Only Icon
                             confirm_deletion(note['_id'])
                     
                     if st.session_state.cal_copy_id == note['_id']:
@@ -806,7 +822,7 @@ with tab_cal:
                     st.rerun()
         else:
             with c_add:
-                if st.button("➕ Add Note", key=f"add_{date_str}"):
+                if st.button("+ Add Note", key=f"add_{date_str}"):
                     st.session_state.cal_create_date = date_str
                     st.rerun()
         

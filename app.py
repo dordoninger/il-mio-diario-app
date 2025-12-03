@@ -171,25 +171,33 @@ st.markdown(f"""
 
         .dor-title {{ font-size: 1.5rem !important; }}
 
-        /* --- FORCE ROW LAYOUT FOR BUTTONS & NAV --- */
-        /* Prevents stacking on mobile */
+        /* --- FORCE ROW LAYOUT FOR ACTION BUTTONS --- */
         
+        /* 1. Force the container of columns to stay in a row (no wrapping) */
+        [data-testid="stHorizontalBlock"] {{
+            flex-wrap: nowrap !important;
+            gap: 4px !important; /* Reduce gap between buttons */
+        }}
+
+        /* 2. Force the columns themselves to shrink and share space */
         div[data-testid="column"] {{
-            min-width: 0px !important; /* Crucial: allows columns to shrink below default */
+            min-width: 0px !important; 
             flex: 1 1 auto !important; 
             width: auto !important;
         }}
         
-        /* ACTION BUTTONS (Edit/Pin/Move/Del) -> Make them fit */
+        /* 3. Style the buttons to fit in the tight space */
         div[data-testid="column"] .stButton button {{
-            padding: 0.2rem 0rem !important; /* Remove padding to fit text */
-            font-size: 0.8rem !important;
+            padding-left: 0px !important;
+            padding-right: 0px !important;
+            font-size: 1.1rem !important; /* Slightly larger emoji */
+            margin: 0px !important;
+            min-height: 38px !important;
         }}
         
-        /* Calendar Nav: Prev/Next */
+        /* Calendar Nav: Prev/Next - Give them a bit more space than the tiny action buttons */
         div[data-testid="column"]:has(button:contains("Prev")),
         div[data-testid="column"]:has(button:contains("Next")) {{
-             width: 50% !important;
              flex: 1 1 50% !important;
         }}
     }}
@@ -704,7 +712,8 @@ with tab_dash:
                     
                     st.markdown("---")
                     # DASHBOARD ACTIONS (4 IN A ROW)
-                    c1, c2, c3, c4 = st.columns(4)
+                    # Modified for mobile: using explicit list [1,1,1,1] helps Streamlit respect flex logic
+                    c1, c2, c3, c4 = st.columns([1, 1, 1, 1])
                     
                     if c1.button("✎", key=f"m_{note['_id']}"):
                         draw_data = note.get("drawing_json", None)
@@ -869,7 +878,8 @@ with tab_cal:
                         st.download_button("Download", data=note["file_data"], file_name=note["file_name"], key=f"dlc_{note['_id']}")
                     
                     # CALENDAR BUTTONS (Mobile: 3 in row)
-                    c1, c2, c3 = st.columns(3)
+                    # Modified for mobile: using explicit list [1,1,1] helps Streamlit respect flex logic
+                    c1, c2, c3 = st.columns([1, 1, 1])
                     
                     if c1.button("✎", key=f"ced_{note['_id']}"): # Only Icon
                         draw_data = note.get("drawing_json", None)

@@ -21,8 +21,6 @@ if 'edit_trigger' not in st.session_state: st.session_state.edit_trigger = 0
 if 'create_key' not in st.session_state: st.session_state.create_key = str(uuid.uuid4())
 
 # States for Calendar
-if 'cal_edit_id' not in st.session_state: st.session_state.cal_edit_id = None
-if 'cal_copy_id' not in st.session_state: st.session_state.cal_copy_id = None
 if 'cal_create_date' not in st.session_state: st.session_state.cal_create_date = None
 if 'cal_year' not in st.session_state: st.session_state.cal_year = datetime.now().year
 if 'cal_month' not in st.session_state: st.session_state.cal_month = datetime.now().month
@@ -142,13 +140,11 @@ st.markdown(f"""
         background-color: transparent !important;
         min-height: 0px !important;
     }}
-    /* Hide the Drag & Drop Text + Icon */
     [data-testid="stFileUploader"] div[data-testid="stMarkdownContainer"], 
     [data-testid="stFileUploader"] svg,
     [data-testid="stFileUploader"] small {{
         display: none !important;
     }}
-    /* Style the button itself */
     [data-testid="stFileUploader"] button {{
         margin-top: 0px !important;
         width: 100% !important;
@@ -156,13 +152,26 @@ st.markdown(f"""
         font-size: 0.9rem !important;
     }}
     
-    /* POPOVER BUTTON STYLE (The 3 dots) */
+    /* --- POPOVER MINIMALIST STYLE (The 3 dots) --- */
+    /* Target the button inside the popover container */
     [data-testid="stPopover"] > div > button {{
-        background-color: transparent !important;
-        border: 1px solid #eee !important;
-        color: #000 !important;
-        font-size: 1.2rem !important;
-        font-weight: bold !important;
+        border: none !important;
+        background: transparent !important;
+        color: #333 !important;
+        padding: 0px !important;
+        width: 30px !important;
+        height: 30px !important;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.5rem !important;
+        line-height: 1 !important;
+        box-shadow: none !important;
+    }}
+    
+    /* Hide the default dropdown arrow/caret that Streamlit adds */
+    [data-testid="stPopover"] > div > button > div > span {{
+        display: none !important;
     }}
 
     /* --- MOBILE SPECIFIC OPTIMIZATIONS --- */
@@ -493,13 +502,7 @@ def open_edit_popup(note_id, old_title, old_content, old_filename, old_labels, n
         with c_t: new_title = st.text_input("Title", value=old_title)
         with c_l: new_labels_str = st.text_input("Labels", value=labels_str)
         
-        new_date_str = None
-        if date_ref and not is_default:
-            try:
-                curr_date = datetime.strptime(date_ref, "%Y-%m-%d").date()
-                new_date = st.date_input("Date (Move)", value=curr_date)
-                new_date_str = str(new_date)
-            except: pass
+        # NOTE: Date changer removed for Calendar as per request (since we have Move/Copy tool)
 
         safe_content = flatten_formulas_to_text(old_content)
         
@@ -536,8 +539,6 @@ def open_edit_popup(note_id, old_title, old_content, old_filename, old_labels, n
             labels_list = [tag.strip() for tag in new_labels_str.split(",") if tag.strip()]
             update_data = {"titolo": new_title, "labels": labels_list, "data": datetime.now()}
             
-            if new_date_str: update_data["calendar_date"] = new_date_str
-
             if note_type == "disegno":
                 if canvas_result.image_data is not None:
                     update_data["drawing_json"] = json.dumps(canvas_result.json_data)
@@ -556,8 +557,6 @@ def open_edit_popup(note_id, old_title, old_content, old_filename, old_labels, n
             
             collection.update_one({"_id": note_id}, {"$set": update_data})
             st.session_state.edit_trigger += 1 
-            st.session_state.cal_edit_id = None
-            st.session_state.cal_copy_id = None
             st.rerun()
 
     if old_filename and note_type != "disegno":
@@ -566,26 +565,80 @@ def open_edit_popup(note_id, old_title, old_content, old_filename, old_labels, n
             collection.update_one({"_id": note_id}, {"$set": {"file_name": None, "file_data": None}})
             st.rerun()
 
-@st.dialog("Move Note", width="large")
-def open_move_popup(current_note_id):
-    st.write("Select the note you want to swap positions with:")
-    candidates = list(collection.find({"deleted": {"$ne": True}, "_id": {"$ne": current_note_id}, "calendar_date": None}).sort("custom_order", 1))
-    if not candidates: st.warning("No notes available."); return
-    options = {n["_id"]: f"{'📌' if n.get('pinned') else '📄'} {n['titolo']}" for n in candidates}
-    selected_target_id = st.selectbox("Swap with:", options.keys(), format_func=lambda x: options[x])
+@st.dialog("Manage Dashboard Note", width="large")
+def open_dash_move_popup(current_note_id):
+    st.write("**What would you like to do?**")
+    action = st.radio("Select Action", ["Swap Position", "Duplicate Note"], label_visibility="collapsed")
     
-    c_swap, c_insert = st.columns(2)
-    if c_swap.button("Swap Positions ⇄", use_container_width=True):
-        n1 = collection.find_one({"_id": current_note_id})
-        n2 = collection.find_one({"_id": selected_target_id})
-        collection.update_one({"_id": current_note_id}, {"$set": {"custom_order": n2["custom_order"], "pinned": n2["pinned"]}})
-        collection.update_one({"_id": selected_target_id}, {"$set": {"custom_order": n1["custom_order"], "pinned": n1["pinned"]}})
-        st.rerun()
-    if c_insert.button("Insert Before ⬆", use_container_width=True):
-        n2 = collection.find_one({"_id": selected_target_id})
-        t_order = n2["custom_order"]
-        collection.update_one({"_id": current_note_id}, {"$set": {"custom_order": t_order, "pinned": n2["pinned"]}})
-        collection.update_many({"custom_order": {"$gte": t_order}, "_id": {"$ne": current_note_id}, "calendar_date": None}, {"$inc": {"custom_order": 1}})
+    if action == "Swap Position":
+        st.caption("Swap order with another dashboard note")
+        candidates = list(collection.find({"deleted": {"$ne": True}, "_id": {"$ne": current_note_id}, "calendar_date": None}).sort("custom_order", 1))
+        if not candidates: st.warning("No notes available."); return
+        options = {n["_id"]: f"{'📌' if n.get('pinned') else '📄'} {n['titolo']}" for n in candidates}
+        selected_target_id = st.selectbox("Swap with:", options.keys(), format_func=lambda x: options[x])
+        
+        c_swap, c_insert = st.columns(2)
+        if c_swap.button("Swap Positions ⇄", use_container_width=True):
+            n1 = collection.find_one({"_id": current_note_id})
+            n2 = collection.find_one({"_id": selected_target_id})
+            collection.update_one({"_id": current_note_id}, {"$set": {"custom_order": n2["custom_order"], "pinned": n2["pinned"]}})
+            collection.update_one({"_id": selected_target_id}, {"$set": {"custom_order": n1["custom_order"], "pinned": n1["pinned"]}})
+            st.rerun()
+        if c_insert.button("Insert Before ⬆", use_container_width=True):
+            n2 = collection.find_one({"_id": selected_target_id})
+            t_order = n2["custom_order"]
+            collection.update_one({"_id": current_note_id}, {"$set": {"custom_order": t_order, "pinned": n2["pinned"]}})
+            collection.update_many({"custom_order": {"$gte": t_order}, "_id": {"$ne": current_note_id}, "calendar_date": None}, {"$inc": {"custom_order": 1}})
+            st.rerun()
+
+    elif action == "Duplicate Note":
+        st.caption("Create a copy of this note in the dashboard")
+        if st.button("Confirm Duplication ❐"):
+            note = collection.find_one({"_id": current_note_id})
+            new_doc = note.copy()
+            del new_doc['_id']
+            new_doc['titolo'] = f"{new_doc['titolo']} (Copy)"
+            new_doc['data'] = datetime.now()
+            # Append to end
+            last_note = collection.find_one(sort=[("custom_order", -1)])
+            new_order = (last_note["custom_order"] + 1) if last_note and "custom_order" in last_note else 0
+            new_doc['custom_order'] = new_order
+            collection.insert_one(new_doc)
+            st.success("Note Duplicated!")
+            time.sleep(0.5)
+            st.rerun()
+
+@st.dialog("Manage Calendar Note", width="large")
+def open_cal_move_popup(note_id, current_date_str):
+    st.write("**Move or Copy to another date**")
+    
+    try: curr_dt = datetime.strptime(current_date_str, "%Y-%m-%d").date()
+    except: curr_dt = datetime.now().date()
+    
+    target_date = st.date_input("Target Date", value=curr_dt)
+    target_date_str = str(target_date)
+    
+    st.write("")
+    mode = st.radio("Mode", ["Move (Change Date)", "Copy (Keep Original)"], index=0)
+    
+    if st.button("Confirm Action", type="primary"):
+        note = collection.find_one({"_id": note_id})
+        
+        if mode == "Move (Change Date)":
+            collection.update_one({"_id": note_id}, {"$set": {"calendar_date": target_date_str}})
+            st.toast("Note Moved!")
+        else:
+            new_doc = note.copy()
+            del new_doc['_id']
+            new_doc['calendar_date'] = target_date_str
+            new_doc['data'] = datetime.now()
+            if new_doc.get('is_default'):
+                new_doc['is_default'] = False # Copy is not default
+                new_doc['titolo'] = f"Copy of {new_doc['titolo']}"
+            collection.insert_one(new_doc)
+            st.toast("Note Copied!")
+            
+        time.sleep(0.5)
         st.rerun()
 
 @st.dialog("Trash", width="large")
@@ -685,7 +738,6 @@ with tab_dash:
                 icon_label = "🏷️ " if labels else ""
                 
                 title_disp = note['titolo'] if note['titolo'] else ""
-                
                 full_title = f"{icon_label}{icon_clip}{title_disp}"
                 
                 with st.expander(full_title):
@@ -701,24 +753,25 @@ with tab_dash:
                         st.caption(f"File: {note['file_name']}")
                         st.download_button("Download", data=note["file_data"], file_name=note["file_name"], key=f"dl_{note['_id']}")
                     
-                    st.markdown("---")
-                    
-                    # --- NEW MENU ACTION BUTTON (POPOVER) ---
-                    with st.popover("⋮", use_container_width=True):
-                        if st.button("Edit ✎", key=f"m_{note['_id']}", use_container_width=True):
-                            draw_data = note.get("drawing_json", None)
-                            open_edit_popup(note['_id'], note['titolo'], note['contenuto'], note.get("file_name"), labels, note.get("tipo"), draw_data)
-                        
-                        pin_label = "Unpin 📌" if note.get("pinned") else "Pin 📌"
-                        if st.button(pin_label, key=f"p_{note['_id']}", use_container_width=True):
-                             collection.update_one({"_id": note['_id']}, {"$set": {"pinned": not note.get("pinned", False)}})
-                             st.rerun()
-                        
-                        if st.button("Move ⇄", key=f"mv_{note['_id']}", use_container_width=True):
-                             open_move_popup(note['_id'])
-                        
-                        if st.button("Delete 🗑", key=f"d_{note['_id']}", use_container_width=True):
-                             confirm_deletion(note['_id'])
+                    # --- NEW ACTION MENU (POPOVER) ---
+                    # Placed in a column with ratio [5, 1] to push it to the right
+                    c_content, c_menu = st.columns([5, 1])
+                    with c_menu:
+                        with st.popover("⋮", use_container_width=True):
+                            if st.button("Edit ✎", key=f"m_{note['_id']}", use_container_width=True):
+                                draw_data = note.get("drawing_json", None)
+                                open_edit_popup(note['_id'], note['titolo'], note['contenuto'], note.get("file_name"), labels, note.get("tipo"), draw_data)
+                            
+                            pin_label = "Unpin 📌" if note.get("pinned") else "Pin 📌"
+                            if st.button(pin_label, key=f"p_{note['_id']}", use_container_width=True):
+                                 collection.update_one({"_id": note['_id']}, {"$set": {"pinned": not note.get("pinned", False)}})
+                                 st.rerun()
+                            
+                            if st.button("Move / Copy ⇄", key=f"mv_{note['_id']}", use_container_width=True):
+                                 open_dash_move_popup(note['_id'])
+                            
+                            if st.button("Delete 🗑", key=f"d_{note['_id']}", use_container_width=True):
+                                 confirm_deletion(note['_id'])
 
     if not all_notes: st.info("No dashboard notes.")
     else:
@@ -850,15 +903,31 @@ with tab_cal:
                 with st.container():
                     st.markdown(f"<div class='cal-note-container'>", unsafe_allow_html=True)
                     
-                    title_txt = note.get('titolo') if note.get('titolo') else ""
-                    icon_art = "🎨 " if note.get('tipo') == "disegno" else ""
+                    # Flex container for title and menu
+                    c_txt, c_menu = st.columns([7, 1])
                     
-                    extra_icons = ""
-                    if note.get("labels"): extra_icons += "🏷️ "
-                    if note.get("file_name") and note.get("tipo") != "disegno": extra_icons += "🖇️ "
+                    with c_txt:
+                        title_txt = note.get('titolo') if note.get('titolo') else ""
+                        icon_art = "🎨 " if note.get('tipo') == "disegno" else ""
+                        extra_icons = ""
+                        if note.get("labels"): extra_icons += "🏷️ "
+                        if note.get("file_name") and note.get("tipo") != "disegno": extra_icons += "🖇️ "
+                        st.markdown(f"**{extra_icons}{icon_art}{title_txt}**")
                     
-                    st.markdown(f"**{extra_icons}{icon_art}{title_txt}**")
-                    
+                    with c_menu:
+                         # UNIFIED MENU FOR ALL CALENDAR NOTES
+                        with st.popover("⋮", use_container_width=True):
+                            
+                            if st.button("Edit ✎", key=f"ced_{note['_id']}", use_container_width=True):
+                                draw_data = note.get("drawing_json", None)
+                                open_edit_popup(note['_id'], note['titolo'], note['contenuto'], note.get("file_name"), note.get("labels", []), note.get("tipo"), draw_data, date_ref=date_str, is_default=note.get('is_default', False))
+                            
+                            if st.button("Move / Copy ⇄", key=f"ccp_{note['_id']}", use_container_width=True):
+                                open_cal_move_popup(note['_id'], date_str)
+
+                            if st.button("Delete 🗑", key=f"cdel_{note['_id']}", use_container_width=True):
+                                confirm_deletion(note['_id'])
+
                     if note.get("labels"): st.markdown(render_badges(note["labels"]), unsafe_allow_html=True)
                     if note.get("recurrence") == "yearly": st.caption("🔄 Annual")
 
@@ -870,47 +939,6 @@ with tab_cal:
                     
                     if note.get("file_name") and note.get("tipo") != "disegno":
                         st.download_button("Download", data=note["file_data"], file_name=note["file_name"], key=f"dlc_{note['_id']}")
-                    
-                    # --- NEW CALENDAR MENU ACTION BUTTON (POPOVER) ---
-                    # We only show actions if it's NOT the default note, or we show partial actions
-                    if not note.get('is_default'):
-                        with st.popover("⋮", use_container_width=True):
-                            
-                            if st.button("Edit ✎", key=f"ced_{note['_id']}", use_container_width=True):
-                                draw_data = note.get("drawing_json", None)
-                                open_edit_popup(note['_id'], note['titolo'], note['contenuto'], note.get("file_name"), note.get("labels", []), note.get("tipo"), draw_data, date_ref=date_str, is_default=note.get('is_default', False))
-                            
-                            if st.button("Copy ❐", key=f"ccp_{note['_id']}", use_container_width=True):
-                                st.session_state.cal_copy_id = note['_id']
-                                st.rerun()
-
-                            if st.button("Delete 🗑", key=f"cdel_{note['_id']}", use_container_width=True):
-                                confirm_deletion(note['_id'])
-                    else:
-                        # Default note "Compiti del giorno" - only Edit
-                        with st.popover("⋮", use_container_width=True):
-                             if st.button("Edit ✎", key=f"ced_{note['_id']}", use_container_width=True):
-                                draw_data = note.get("drawing_json", None)
-                                open_edit_popup(note['_id'], note['titolo'], note['contenuto'], note.get("file_name"), note.get("labels", []), note.get("tipo"), draw_data, date_ref=date_str, is_default=note.get('is_default', False))
-                    
-                    if st.session_state.cal_copy_id == note['_id']:
-                        with st.container():
-                            st.info("Copy to:")
-                            col_d, col_b = st.columns([2, 1])
-                            copy_dest_date = col_d.date_input("Target", value=dt, key=f"cdi_{note['_id']}")
-                            if col_b.button("Confirm", key=f"cb_{note['_id']}"):
-                                new_doc = note.copy()
-                                del new_doc['_id']
-                                new_doc['calendar_date'] = str(copy_dest_date)
-                                new_doc['data'] = datetime.now()
-                                if new_doc.get('is_default'):
-                                    new_doc['is_default'] = False
-                                    new_doc['titolo'] = f"Copy of {new_doc['titolo']}"
-                                collection.insert_one(new_doc)
-                                st.session_state.cal_copy_id = None
-                                st.success("Copied!")
-                                time.sleep(0.5)
-                                st.rerun()
 
                     st.markdown("</div>", unsafe_allow_html=True)
         

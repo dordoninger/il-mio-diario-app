@@ -75,7 +75,7 @@ st.components.v1.html(swipe_js, height=0)
 # --- 4. CSS AESTHETIC & MOBILE OPTIMIZATION ---
 st.markdown(f"""
 <style>
-    /* --- 1. ANIMATION: FROM FAR TO NEAR --- */
+    /* --- 1. ANIMATION: FROM FAR TO NEAR (TRACKING IN CONTRACT) --- */
     @keyframes tracking-in-contract {{
         0% {{ letter-spacing: 15px; opacity: 0; }}
         40% {{ opacity: 0.6; }}
@@ -183,29 +183,25 @@ st.markdown(f"""
 
         .dor-title {{ font-size: 1.5rem !important; }}
         
-        /* --- 3. BUTTONS IN ROW FIX (FORCE NO WRAP & MIN-WIDTH 0) --- */
-        
-        /* Force the horizontal block inside expander to be a row */
-        [data-testid="stExpander"] [data-testid="stHorizontalBlock"] {
+        /* --- 3. BUTTONS IN ROW FIX (FIXED BRACES) --- */
+        [data-testid="stExpander"] [data-testid="stHorizontalBlock"] {{
             flex-wrap: nowrap !important;
             gap: 2px !important;
-        }
+        }}
         
-        /* Force columns inside expander to shrink */
-        [data-testid="stExpander"] [data-testid="column"] {
+        [data-testid="stExpander"] [data-testid="column"] {{
             width: 25% !important;
-            flex: 1 1 0 !important; /* Flex grow 1, shrink 1, basis 0 */
-            min-width: 0px !important; /* Crucial override */
+            flex: 1 1 0 !important;
+            min-width: 0px !important;
             padding: 0 1px !important;
-        }
+        }}
         
-        /* Make button text smaller to fit */
-        [data-testid="stExpander"] .stButton button {
+        [data-testid="stExpander"] .stButton button {{
             padding: 0.2rem 0rem !important;
             font-size: 0.7rem !important;
             white-space: nowrap !important;
             overflow: hidden !important;
-        }
+        }}
     }}
 </style>
 """, unsafe_allow_html=True)
@@ -414,6 +410,7 @@ def render_create_note_form(key_suffix, date_ref=None):
         
         ckey = f"cv_{cw}_{ch}_{key_suffix}"
         res = st_canvas(fill_color="rgba(0,0,0,0)", stroke_width=sw, stroke_color=fc, background_color="#FFF", update_streamlit=True, height=ch, width=cw, drawing_mode="freedraw", key=ckey)
+        
         if st.button("Save Drawing", key=f"bs_{key_suffix}"):
             if logic_save_note(title, labels, None, None, "Drawing", res, date_ref, recur_val, stop_year_val):
                 st.toast("Saved!", icon="✅")
@@ -548,6 +545,7 @@ def open_edit_popup(note_id, old_title, old_content, old_filename, old_labels, n
         if st.form_submit_button("Save Changes", type="primary"):
             labels_list = [tag.strip() for tag in new_labels_str.split(",") if tag.strip()]
             update_data = {"titolo": new_title, "labels": labels_list, "data": datetime.now()}
+            
             if new_date_str: update_data["calendar_date"] = new_date_str
 
             if note_type == "disegno":
@@ -714,7 +712,7 @@ with tab_dash:
                         st.download_button("Download", data=note["file_data"], file_name=note["file_name"], key=f"dl_{note['_id']}")
                     
                     st.markdown("---")
-                    # ACTIONS: 4 IN A ROW ON MOBILE
+                    # ACTIONS (4 in row on mobile)
                     c1, c2, c3, c4 = st.columns(4)
                     
                     if c1.button("✎", key=f"m_{note['_id']}"):
@@ -881,7 +879,7 @@ with tab_cal:
                     if note.get("file_name") and note.get("tipo") != "disegno":
                         st.download_button("Download", data=note["file_data"], file_name=note["file_name"], key=f"dlc_{note['_id']}")
                     
-                    # CALENDAR BUTTONS (Mobile optimized)
+                    # CALENDAR BUTTONS (Edit, Copy, Delete) - Compact Left
                     c1, c2, c3, c_space = st.columns([0.8, 0.8, 0.8, 6])
                     
                     if c1.button("✎", key=f"ced_{note['_id']}"): # Only Icon

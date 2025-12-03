@@ -36,11 +36,56 @@ if 'reset_counter' not in st.session_state: st.session_state.reset_counter = 0
 if 'canvas_w' not in st.session_state: st.session_state.canvas_w = 600
 if 'canvas_h' not in st.session_state: st.session_state.canvas_h = 400
 
-# --- 3. CSS AESTHETIC & MOBILE OPTIMIZATION ---
+# --- 3. JAVASCRIPT FOR SWIPE GESTURES ---
+swipe_js = """
+<script>
+    document.addEventListener('touchstart', handleTouchStart, false);
+    document.addEventListener('touchmove', handleTouchMove, false);
+
+    var xDown = null;
+    var yDown = null;
+
+    function handleTouchStart(evt) {
+        const firstTouch = evt.touches[0];
+        xDown = firstTouch.clientX;
+        yDown = firstTouch.clientY;
+    };
+
+    function handleTouchMove(evt) {
+        if (!xDown || !yDown) { return; }
+
+        var xUp = evt.touches[0].clientX;
+        var yUp = evt.touches[0].clientY;
+
+        var xDiff = xDown - xUp;
+        var yDiff = yDown - yUp;
+
+        if (Math.abs(xDiff) > Math.abs(yDiff)) { // Horizontal swipe
+            var tabs = window.parent.document.querySelectorAll('button[data-baseweb="tab"]');
+            if (xDiff > 0) {
+                // Left Swipe -> Go to Calendar (Index 1)
+                if (tabs[1]) tabs[1].click();
+            } else {
+                // Right Swipe -> Go to Dashboard (Index 0)
+                if (tabs[0]) tabs[0].click();
+            }
+        }
+        xDown = null;
+        yDown = null;
+    };
+</script>
+"""
+st.components.v1.html(swipe_js, height=0)
+
+# --- 4. CSS AESTHETIC & MOBILE OPTIMIZATION ---
 st.markdown(f"""
 <style>
-    /* --- GLOBAL STYLES --- */
-    
+    /* --- ANIMATION --- */
+    @keyframes tracking-in-expand {{
+        0% {{ letter-spacing: 10px; opacity: 0; }}
+        100% {{ letter-spacing: 4px; opacity: 1; }}
+    }}
+
     .dor-title {{
         font-family: 'Helvetica Neue', 'Helvetica', 'Arial', sans-serif;
         font-weight: 300;
@@ -49,6 +94,7 @@ st.markdown(f"""
         margin-top: 0px; margin-bottom: 0px;
         white-space: nowrap;
         line-height: 1.2;
+        animation: tracking-in-expand 1.5s cubic-bezier(0.215, 0.610, 0.355, 1.000) both;
     }}
 
     .section-header {{
@@ -81,7 +127,6 @@ st.markdown(f"""
         padding-top: 10px; border-radius: 0 0 12px 12px;
     }}
     
-    /* READ CONTENT */
     .quill-read-content {{ font-size: {st.session_state.text_size} !important; font-family: 'Georgia', serif; line-height: 1.6; }}
     .quill-read-content a {{ color: #1E90FF !important; text-decoration: underline !important; cursor: pointer !important; }}
 
@@ -110,30 +155,42 @@ st.markdown(f"""
     .cal-note-container {{ padding: 8px 0; margin-bottom: 5px; border-bottom: 1px solid #eee; }}
     .cal-note-container:last-child {{ border-bottom: none; }}
 
-    /* --- 2. FILE UPLOADER CLEANUP (Hides "Drag and drop" text) --- */
-    [data-testid="stFileUploader"] section > div > div > span, 
-    [data-testid="stFileUploader"] section > div > div > small {{
-        display: none !important;
-    }}
+    /* --- FILE UPLOADER CLEANUP --- */
+    /* Hide Drag/Drop Text, Limit Text, SVG Icon, and Border */
     [data-testid="stFileUploader"] section {{
         padding: 0 !important;
+        border: none !important;
+        background-color: transparent !important;
         min-height: 0px !important;
+        align-items: flex-start !important;
     }}
+    [data-testid="stFileUploader"] section > div {{
+        padding: 0 !important;
+        line-height: 0 !important;
+    }}
+    /* Hide SVG and Span texts */
+    [data-testid="stFileUploader"] svg, 
+    [data-testid="stFileUploader"] span, 
+    [data-testid="stFileUploader"] small {{ 
+        display: none !important; 
+    }}
+    /* Force button to look standard */
     [data-testid="stFileUploader"] button {{
         margin-top: 0px !important;
+        border: 1px solid #e0e0e0 !important;
     }}
 
-    /* --- 1 & 3. MOBILE OPTIMIZATIONS (@media) --- */
+
+    /* --- MOBILE SPECIFIC OPTIMIZATIONS --- */
     @media only screen and (max-width: 600px) {{
         
-        /* Adjust Padding to avoid white space */
         .block-container {{
             padding-top: 2rem !important;
             padding-left: 0.5rem !important;
             padding-right: 0.5rem !important;
         }}
 
-        /* HEADER: Force Row Layout */
+        /* HEADER */
         [data-testid="stHorizontalBlock"]:has(.dor-title) {{
             display: flex !important;
             flex-direction: row !important;
@@ -141,39 +198,25 @@ st.markdown(f"""
             align-items: center !important;
             gap: 5px !important;
         }}
-        
-        /* Force Title width */
         [data-testid="stHorizontalBlock"]:has(.dor-title) > div:nth-child(1) {{
-            flex: 1 1 auto !important;
-            min-width: 0 !important;
+            flex: 1 1 auto !important; min-width: 0 !important;
         }}
-        
-        /* Force Icons width (Settings & Trash) */
         [data-testid="stHorizontalBlock"]:has(.dor-title) > div:nth-child(2),
         [data-testid="stHorizontalBlock"]:has(.dor-title) > div:nth-child(3) {{
-            flex: 0 0 auto !important;
-            width: 40px !important;
-            min-width: 40px !important;
+            flex: 0 0 auto !important; width: 40px !important; min-width: 40px !important;
         }}
 
         .dor-title {{ font-size: 1.5rem !important; }}
         
         /* ACTION BUTTONS (Edit/Pin/Move/Del) - Force 4 in a row */
-        /* We target the columns inside expanders */
-        [data-testid="stExpander"] [data-testid="column"] {{
-            min-width: 0px !important;
-            padding: 0 2px !important; /* Reduce gap between buttons */
-        }}
-        
-        /* Override Streamlit's mobile stacking */
-        div[data-testid="column"] {{
-            width: auto !important;
+        /* Using specific path to avoid affecting other columns */
+        div[data-testid="stExpander"] div[data-testid="column"] {{
+            min-width: 0 !important;
+            width: 25% !important;
             flex: 1 !important;
+            padding: 0 2px !important;
         }}
     }}
-    
-    @keyframes fade-in {{ 0% {{ opacity: 0; }} 100% {{ opacity: 1; }} }}
-    .splash-text {{ font-family: 'Helvetica Neue', sans-serif; font-weight: 300; font-size: 3rem; text-align: center; margin-top: 30vh; animation: fade-in 2.0s ease-out; }}
 </style>
 """, unsafe_allow_html=True)
 
@@ -326,20 +369,17 @@ def render_create_note_form(key_suffix, date_ref=None):
 
     if note_type == "Text":
         with st.form(f"form_{key_suffix}", clear_on_submit=True):
-            # LAYOUT: Title | Labels (Same Row)
             c_tit, c_lab = st.columns([2, 1])
             with c_tit: title = st.text_input("Title (Optional)")
             with c_lab: labels = st.text_input("Labels")
-                
             content = st_quill(placeholder="Write here...", html=True, toolbar=toolbar_config)
             
-            # LAYOUT: Attachment | Save Button (Same Row, No Text)
+            # COMPACT FILE UPLOAD ROW
             c_file, c_btn = st.columns([3, 1])
             with c_file:
-                # Label is hidden via CSS
-                f_up = st.file_uploader("Attachment (<200MB)", type=['pdf', 'docx', 'txt', 'mp3', 'wav', 'jpg', 'png'])
+                f_up = st.file_uploader("Attachment", type=['pdf', 'docx', 'txt', 'mp3', 'wav', 'jpg', 'png'])
             with c_btn:
-                st.write("") # Alignment spacer
+                st.write("") 
                 st.write("") 
                 submitted = st.form_submit_button("Save Note")
             
@@ -355,7 +395,6 @@ def render_create_note_form(key_suffix, date_ref=None):
                 else:
                     st.warning("Empty note not saved.")
     else:
-        # DRAWING MODE
         c_t, c_l = st.columns([2, 1])
         with c_t: title = st.text_input("Title (Optional)", key=f"dt_{key_suffix}")
         with c_l: labels = st.text_input("Labels", key=f"dl_{key_suffix}")
@@ -416,8 +455,6 @@ def open_settings():
         st.rerun()
     
     st.divider()
-    
-    # STATISTICS
     st.write("**Statistics**")
     all_notes_stat = list(collection.find({}))
     total_count = len(all_notes_stat)
@@ -481,7 +518,6 @@ def open_edit_popup(note_id, old_title, old_content, old_filename, old_labels, n
     labels_str = ", ".join(old_labels) if old_labels else ""
     
     with st.form(key=f"edit_form_{note_id}"):
-        # INLINE LAYOUT
         c_t, c_l = st.columns([2, 1])
         with c_t: new_title = st.text_input("Title", value=old_title)
         with c_l: new_labels_str = st.text_input("Labels", value=labels_str)
@@ -521,7 +557,8 @@ def open_edit_popup(note_id, old_title, old_content, old_filename, old_labels, n
             unique_key = f"quill_edit_{note_id}_{st.session_state.edit_trigger}"
             new_content = st_quill(value=safe_content, toolbar=toolbar_config, html=True, key=unique_key)
             st.divider()
-            # INLINE FILE UPLOAD IN EDIT
+            
+            # INLINE FILE UPLOAD (EDIT)
             c_file, c_space = st.columns([3, 1])
             with c_file:
                 new_file = st.file_uploader("Replace File", type=['pdf', 'docx', 'txt', 'mp3', 'wav', 'jpg', 'png'])
@@ -628,7 +665,6 @@ def confirm_deletion(note_id):
 
 # --- MAIN LAYOUT ---
 
-# MOBILE-OPTIMIZED HEADER (Flexbox forced in CSS)
 head_col1, head_col2, head_col3 = st.columns([8, 1, 1])
 with head_col1: st.markdown("<div class='dor-title'>DOR NOTES</div>", unsafe_allow_html=True)
 with head_col2: 
@@ -696,7 +732,9 @@ with tab_dash:
                         st.caption(f"File: {note['file_name']}")
                         st.download_button("Download", data=note["file_data"], file_name=note["file_name"], key=f"dl_{note['_id']}")
                     
-                    # DASHBOARD ACTIONS - MOBILE: 4 IN A ROW (25% each via flex)
+                    st.markdown("---")
+                    
+                    # ACTIONS (4 in row on mobile)
                     c1, c2, c3, c4 = st.columns(4)
                     
                     if c1.button("✎", key=f"m_{note['_id']}"):
@@ -767,7 +805,6 @@ with tab_cal:
     start_date_str = f"{st.session_state.cal_year}-{st.session_state.cal_month:02d}-01"
     end_date_str = f"{st.session_state.cal_year}-{st.session_state.cal_month:02d}-{num_days}"
     
-    # FILTER CALENDAR QUERIES
     q_reg = {"calendar_date": {"$gte": start_date_str, "$lte": end_date_str}, "deleted": {"$ne": True}}
     q_rec = {"deleted": {"$ne": True}, "recurrence": "yearly", "cal_month": st.session_state.cal_month, "$or": [{"recur_end_year": None}, {"recur_end_year": {"$gt": st.session_state.cal_year}}]}
     
@@ -863,8 +900,6 @@ with tab_cal:
                     if note.get("file_name") and note.get("tipo") != "disegno":
                         st.download_button("Download", data=note["file_data"], file_name=note["file_name"], key=f"dlc_{note['_id']}")
                     
-                    # CALENDAR BUTTONS
-                    # On mobile, CSS will force these 100% or similar, on Desktop they are compact left
                     c1, c2, c3, c_space = st.columns([0.8, 0.8, 0.8, 6])
                     
                     if c1.button("✎", key=f"ced_{note['_id']}"): # Only Icon
@@ -910,6 +945,7 @@ with tab_cal:
                     st.rerun()
         else:
             with c_add:
+                # UPDATED ADD BUTTON
                 if st.button("+ Add Note", key=f"add_{date_str}"):
                     st.session_state.cal_create_date = date_str
                     st.rerun()

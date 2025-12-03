@@ -161,7 +161,7 @@ st.markdown(f"""
         
         .block-container {{ padding-top: 2rem !important; padding-left: 0.5rem !important; padding-right: 0.5rem !important; }}
 
-        /* HEADER ROW FIX */
+        /* HEADER ROW FIX - Keep Title and Header Buttons Inline */
         [data-testid="stHorizontalBlock"]:has(.dor-title) {{
             display: flex !important; flex-wrap: nowrap !important; align-items: center !important; gap: 5px !important;
         }}
@@ -171,36 +171,46 @@ st.markdown(f"""
 
         .dor-title {{ font-size: 1.5rem !important; }}
 
-        /* --- COLUMNS BEHAVIOR ON MOBILE --- */
-        /* Crucial: We allow columns to shrink to 0 width. 
-           This prevents the 'wrapping' of buttons when they are small.
-           We do NOT force 'nowrap' globally, so large grid items (Dashboard notes) 
-           can still stack vertically if Streamlit wants them to.
-        */
-        div[data-testid="column"] {{
-            min-width: 0px !important;
-            flex: 1 1 0px !important; /* Forces equal width distribution */
-        }}
-        
-        /* Reduce gap between columns to fit 4 buttons */
+        /* ========================================= */
+        /* THE "MAGIC" ROW LOGIC FOR MOBILE        */
+        /* ========================================= */
+
+        /* 1. DEFAULT: Force ALL horizontal blocks to be a single row (NOWRAP).
+           This fixes the Action Buttons, Calendar Nav, etc. */
         [data-testid="stHorizontalBlock"] {{
-            gap: 0.3rem !important;
+            flex-wrap: nowrap !important;
+            gap: 2px !important;
         }}
 
-        /* --- BUTTONS IN MOBILE --- */
-        /* Remove padding to allow 4 buttons to fit side-by-side */
+        /* 2. EXCEPTION: If the horizontal block contains a Note (Expander), 
+           then it MUST wrap so notes stack vertically. */
+        div[data-testid="stHorizontalBlock"]:has(.streamlit-expander) {{
+            flex-wrap: wrap !important;
+            gap: 1rem !important;
+        }}
+
+        /* 3. COLUMNS: Allow them to shrink infinitely so they fit on one line. */
+        div[data-testid="column"] {{
+            min-width: 0px !important;
+            flex: 1 1 auto !important;
+            width: auto !important;
+        }}
+
+        /* 4. EXCEPTION COLUMNS: If a column contains a Note (Expander),
+           it must take full width of the screen. */
+        div[data-testid="column"]:has(.streamlit-expander) {{
+             width: 100% !important;
+             flex: 1 1 100% !important;
+             min-width: 100% !important;
+        }}
+
+        /* 5. BUTTON STYLING: Make buttons fit tightly */
         div[data-testid="column"] .stButton button {{
             padding: 0px !important;
             margin: 0px !important;
             font-size: 1.0rem !important;
             min-height: 38px !important;
-        }}
-        
-        /* Specific Fix for Calendar Nav Buttons (Prev/Next) */
-        /* Because we forced min-width 0, we want these to stay 50/50 */
-        div[data-testid="column"]:has(button:contains("Prev")),
-        div[data-testid="column"]:has(button:contains("Next")) {{
-             flex: 1 1 50% !important;
+            width: 100% !important;
         }}
     }}
 </style>
